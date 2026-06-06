@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables
+.env
+
+# Vector database
+chroma_db/
+milvus_local.db
+milvus_test.db/
+milvus_test2.db/
+*.db
+
+# Data files
+data/**/*.pdf
+data/**/*.docx
+data/**/*.txt
+data/**/*.md
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
