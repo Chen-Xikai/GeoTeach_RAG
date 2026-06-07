@@ -620,6 +620,87 @@ async def question_answer(request: QARequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== 同步和重建API ====================
+
+@app.post("/api/documents/sync")
+async def sync_documents(category: str = None):
+    """同步文档（增量同步）"""
+    try:
+        db = get_db()
+        docs_dir = get_docs_dir()
+        
+        # 加载所有本地文档
+        from core.document import load_all_documents
+        documents = load_all_documents(docs_dir, category=category)
+        
+        # 执行同步
+        stats = db.sync(documents)
+        
+        return {
+            "status": "success",
+            "stats": stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/documents/rebuild")
+async def rebuild_documents(category: str = None):
+    """重建向量库（全量重建）"""
+    try:
+        db = get_db()
+        docs_dir = get_docs_dir()
+        
+        # 加载所有本地文档
+        from core.document import load_all_documents
+        documents = load_all_documents(docs_dir, category=category)
+        
+        # 执行重建
+        total = db.rebuild(documents)
+        
+        return {
+            "status": "success",
+            "total_chunks": total
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/documents/orphans")
+async def check_orphan_records():
+    """检查孤立记录"""
+    try:
+        db = get_db()
+        docs_dir = get_docs_dir()
+        
+        orphans = db.check_orphan_records([str(docs_dir)])
+        
+        return {
+            "status": "success",
+            "orphans": orphans,
+            "count": len(orphans)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/documents/clean-orphans")
+async def clean_orphan_records():
+    """清理孤立记录"""
+    try:
+        db = get_db()
+        docs_dir = get_docs_dir()
+        
+        count = db.clean_orphan_records([str(docs_dir)])
+        
+        return {
+            "status": "success",
+            "cleaned": count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== 静态文件服务 ====================
 
 # 挂载前端静态文件

@@ -429,3 +429,233 @@ class DocumentDatabase:
             }
         except Exception as e:
             return {"count": 0, "chunk_count": 0, "status": "错误", "error": str(e), "database": "Milvus Lite"}
+    
+    def check_orphan_records(self, local_dirs: List[str]) -> List[dict]:
+        """检查孤立记录（本地文件已删除，但向量记录还在）
+        
+        Args:
+            local_dirs: 本地目录路径列表
+            
+        Returns:
+            孤立记录列表
+        """
+        # 收集所有本地文件路径
+        all_local_files = set()
+        for dir_path in local_dirs:
+            p = Path(dir_path)
+            if p.exists():
+                for f in p.rglob("*"):
+                    if f.is_file():
+                        all_local_files.add(str(f.resolve()))
+        
+        # 检查向量记录
+        stored_sources = self.list_sources()
+        orphans = []
+        for source in stored_sources:
+            source_path = Path(source)
+            # 检查文件是否存在
+            if not source_path.exists() and str(source_path.resolve()) not in all_local_files:
+                orphans.append({"source": source})
+        
+        return orphans
+    
+    def clean_orphan_records(self, local_dirs: List[str]) -> int:
+        """清理孤立记录
+        
+        Args:
+            local_dirs: 本地目录路径列表
+            
+        Returns:
+            清理的记录数
+        """
+        orphans = self.check_orphan_records(local_dirs)
+        count = 0
+        for doc in orphans:
+            self.delete(doc["source"])
+            count += 1
+        return count
+    
+    def sync(self, documents: List[dict], chunk_cfg: dict = None, source_type: str = "local_file", on_progress=None) -> dict:
+        """同步文档 — 延迟加载（直接操作）
+        
+        对比 hash，自动增删改
+        
+        Args:
+            documents: 文档列表，每个文档包含 path, page_content, metadata
+            chunk_cfg: 切块配置
+            source_type: 来源类型
+            on_progress: 进度回调函数 (op, idx, total, name, count)
+            
+        Returns:
+            同步统计信息
+        """
+        from core.chunking import chunk_single_document
+        from core.utils import content_hash
+        
+        stats = {"added": 0, "updated": 0, "unchanged": 0, "deleted": 0}
+        
+        # 获取当前本地文件路径
+        current_sources = set()
+        for doc in documents:
+            source = doc.get("metadata", {}).get("source", "") or doc.get("path", "")
+            if source:
+                current_sources.add(source)
+        
+        # 获取已存储的文件路径
+        stored_sources = self.list_sources()
+        
+        # 计算差异
+        new_sources = current_sources - stored_sources      # 需要添加
+        delete_sources = stored_sources - current_sources   # 需要删除
+        common_sources = current_sources & stored_sources   # 需要检查更新
+        
+        n = len(documents)
+        
+        # 1. 处理新增文档
+        for idx, doc in enumerate(documents, 1):
+            source = doc.get("metadata", {}).get("source", "") or doc.get("path", "")
+            if source in new_sources:
+                fname = Path(source).name
+                self.add(doc, chunk_cfg, source_type)
+                stats["added"] += 1
+                if on_progress:
+                    on_progress("add", idx, n, fname, 0)
+        
+        # 2. 处理更新文档（对比 hash，延迟加载）
+        for idx, doc in enumerate(documents, 1):
+            source = doc.get("metadata", {}).get("source", "") or doc.get("path", "")
+            if source in common_sources:
+                fname = Path(source).name
+                stored_h = self.get_hash(source)
+                current_h = content_hash(doc.get("page_content", ""))
+                if stored_h != current_h:
+                    # 直接更新
+                    self.update(doc, chunk_cfg, source_type)
+                    stats["updated"] += 1
+                    if on_progress:
+                        on_progress("update", idx, n, fname, 0)
+                else:
+                    stats["unchanged"] += 1
+        
+        # 3. 处理删除文档
+        for source in delete_sources:
+            self.delete(source)
+            stats["deleted"] += 1
+            if on_progress:
+                on_progress("delete", 0, 0, Path(source).name, 0)
+        
+        print(f"同步完成: 新增 {stats['added']}, 更新 {stats['updated']}, 删除 {stats['deleted']}, 未变 {stats['unchanged']}")
+        return stats
+    
+    def rebuild(self, documents: List[dict], chunk_cfg: dict = None, source_type: str = "local_file", on_progress=None) -> int:
+        """全量重建 — 影子集合策略
+        
+        创建新集合 → 重新处理所有文档 → 验证 → 切换 → 清理旧集合
+        
+        Args:
+            documents: 文档列表
+            chunk_cfg: 切块配置
+            source_type: 来源类型
+            on_progress: 进度回调函数
+            
+        Returns:
+            重建的chunk数量
+        """
+        from core.chunking import chunk_single_document
+        from datetime import datetime
+        
+        shadow_name = None
+        try:
+            # 创建影子集合
+            shadow_name = f"{self.collection_name}_v{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # 创建新集合
+            self.client.create_collection(
+                collection_name=shadow_name,
+                dimension=1024,
+            )
+            print(f"创建影子集合: {shadow_name}")
+            
+            # 处理所有文档
+            total = 0
+            n = len(documents)
+            for i, doc in enumerate(documents, 1):
+                chunks = chunk_single_document(doc, chunk_cfg, source_type)
+                if chunks:
+                    self._add_to_collection(shadow_name, chunks)
+                    total += len(chunks)
+                    fname = Path(doc.get("metadata", {}).get("source", "")).name
+                    if on_progress:
+                        on_progress("rebuild", i, n, fname, len(chunks))
+            
+            # 验证影子集合
+            shadow_stats = self.client.get_collection_stats(shadow_name)
+            shadow_count = shadow_stats.get("row_count", 0)
+            if shadow_count == 0 and total > 0:
+                raise ValueError("影子集合验证失败: 数据为空")
+            
+            # 切换到影子集合
+            old_collection = self.collection_name
+            self.collection_name = shadow_name
+            self._next_id = shadow_count + 1
+            
+            # 清理旧集合
+            try:
+                self.client.drop_collection(old_collection)
+                print(f"清理旧集合: {old_collection}")
+            except Exception as e:
+                print(f"清理旧集合失败（可忽略）: {e}")
+            
+            # 保存缓存
+            self._cache.save()
+            
+            print(f"重建完成: {shadow_name}, {total} chunks")
+            return total
+            
+        except Exception as e:
+            print(f"重建失败: {e}")
+            # 清理失败的影子集合
+            if shadow_name:
+                try:
+                    self.client.drop_collection(shadow_name)
+                except:
+                    pass
+            raise
+    
+    def _add_to_collection(self, collection_name: str, chunks: List[dict]):
+        """向指定集合添加chunks"""
+        texts = [c["page_content"] for c in chunks]
+        metadatas = [c["metadata"] for c in chunks]
+        
+        # 批量获取嵌入向量
+        cached_results, missed_indices = self._cache.get_batch(texts)
+        
+        if missed_indices:
+            missed_texts = [texts[i] for i in missed_indices]
+            missed_embeddings = self.embeddings.embed_documents(missed_texts)
+            self._cache.set_batch(missed_texts, missed_embeddings)
+            for i, idx in enumerate(missed_indices):
+                cached_results[idx] = missed_embeddings[i]
+        
+        embeddings = cached_results
+        
+        # 构建数据
+        data = []
+        for i, (emb, meta) in enumerate(zip(embeddings, metadatas)):
+            content_hash = hashlib.md5(texts[i].encode()).hexdigest()
+            data.append({
+                "id": self._next_id + i,
+                "vector": emb,
+                "source": meta.get("source", ""),
+                "category": meta.get("category", ""),
+                "content_hash": content_hash,
+                "content": texts[i],
+            })
+        
+        # 插入数据
+        self.client.insert(
+            collection_name=collection_name,
+            data=data
+        )
+        
+        self._next_id += len(data)

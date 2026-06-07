@@ -31,7 +31,12 @@ export const documentsApi = {
   // 待审核文件API
   pending: () => api.get('/documents/pending'),
   approve: (pendingId) => api.post('/documents/approve', { pending_id: pendingId, approved: true }),
-  reject: (pendingId) => api.post('/documents/approve', { pending_id: pendingId, approved: false })
+  reject: (pendingId) => api.post('/documents/approve', { pending_id: pendingId, approved: false }),
+  // 同步和重建API
+  sync: (category) => api.post('/documents/sync', null, { params: { category } }),
+  rebuild: (category) => api.post('/documents/rebuild', null, { params: { category } }),
+  orphans: () => api.get('/documents/orphans'),
+  cleanOrphans: () => api.post('/documents/clean-orphans')
 }
 
 // 教材目录API
