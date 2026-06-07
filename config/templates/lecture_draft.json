@@ -1,0 +1,62 @@
+{
+  "id": "lecture_draft",
+  "name": "讲课稿",
+  "description": "生成详细的地理讲课稿",
+  "version": "1.0.0",
+  "sections": [
+    {
+      "id": "opening",
+      "title": "开场",
+      "required": true,
+      "prompt": "请生成课堂开场白，包括问候和引入主题。"
+    },
+    {
+      "id": "situational_introduction",
+      "title": "情境导入",
+      "required": true,
+      "prompt": "请生成情境导入环节，使用学生熟悉的历史故事或生活情境引入课题。"
+    },
+    {
+      "id": "group_division",
+      "title": "分组说明",
+      "required": false,
+      "prompt": "请生成分组说明，明确小组合作规则。"
+    },
+    {
+      "id": "exploration_1",
+      "title": "探究环节1",
+      "required": true,
+      "prompt": "请生成第一个探究环节，包括：\n1. 教师讲解内容\n2. 学生活动\n3. 板书设计\n4. 设计意图"
+    },
+    {
+      "id": "cognitive_conflict",
+      "title": "认知冲突",
+      "required": true,
+      "prompt": "请生成认知冲突环节，通过与实际现象的矛盾引发学生思考。"
+    },
+    {
+      "id": "exploration_2",
+      "title": "探究环节2",
+      "required": true,
+      "prompt": "请生成第二个探究环节，深入学习核心知识。"
+    },
+    {
+      "id": "summary",
+      "title": "课堂总结",
+      "required": true,
+      "prompt": "请生成课堂总结，回顾知识结构和学习历程。"
+    },
+    {
+      "id": "homework",
+      "title": "课后作业",
+      "required": true,
+      "prompt": "请生成课后作业，包括巩固练习和预习任务。"
+    },
+    {
+      "id": "closing",
+      "title": "结束语",
+      "required": true,
+      "prompt": "请生成课堂结束语。"
+    }
+  ]
+}

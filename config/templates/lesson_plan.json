@@ -1,0 +1,68 @@
+{
+  "id": "lesson_plan",
+  "name": "教案",
+  "description": "生成规范的地理教案",
+  "version": "1.0.0",
+  "sections": [
+    {
+      "id": "basic_info",
+      "title": "基本信息",
+      "required": true,
+      "fields": ["授课教师", "授课时长", "教材版本", "授课对象", "教学课题"]
+    },
+    {
+      "id": "curriculum_analysis",
+      "title": "课标分析",
+      "required": true,
+      "prompt": "请分析课程标准要求，包括课标原文和课标解读。"
+    },
+    {
+      "id": "design_concept",
+      "title": "设计理念",
+      "required": true,
+      "prompt": "请阐述本节课的设计理念。"
+    },
+    {
+      "id": "content_analysis",
+      "title": "课程内容分析",
+      "required": true,
+      "prompt": "请分析课程内容，包括教材知识结构、地位与作用、知识联系。"
+    },
+    {
+      "id": "student_analysis",
+      "title": "学情分析",
+      "required": true,
+      "prompt": "请分析学生情况，包括知识储备、能力基础、心理特点、思维方式及应对策略。"
+    },
+    {
+      "id": "teaching_objectives",
+      "title": "教学目标",
+      "required": true,
+      "prompt": "请制定教学目标（核心素养导向）。"
+    },
+    {
+      "id": "key_difficulties",
+      "title": "教学重难点",
+      "required": true,
+      "prompt": "请确定教学重难点。"
+    },
+    {
+      "id": "teaching_methods",
+      "title": "教法与学法",
+      "required": true,
+      "prompt": "请说明教学方法和学习方法。"
+    },
+    {
+      "id": "teaching_process",
+      "title": "教学过程",
+      "required": true,
+      "prompt": "请设计详细的教学过程，包括情境设计、教学流程、板书设计、详细过程。"
+    },
+    {
+      "id": "teaching_evaluation",
+      "title": "教学评价",
+      "required": true,
+      "prompt": "请设计教学评价方案，包括评课和评学两个维度。"
+    }
+  ]
+}

@@ -1,0 +1,489 @@
+"""
+GeoTeach AI Agent - Web API服务器
+
+提供REST API接口和前端静态文件托管。
+"""
+
+import os
+import json
+from pathlib import Path
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+
+from config import (
+    get_web_config,
+    get_docs_dir,
+    get_generated_dir,
+    get_catalog_dir,
+)
+from core.database import DocumentDatabase
+from core.document import load_single_document, read_file
+from core.generator import ContentGenerator
+
+
+# ==================== 初始化 ====================
+
+app = FastAPI(
+    title="GeoTeach AI Agent",
+    description="地理教学AI助手API（支持多模态）",
+    version="1.1.0"
+)
+
+# CORS配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 全局实例
+db = None
+generator = None
+
+
+def get_db() -> DocumentDatabase:
+    """获取数据库实例"""
+    global db
+    if db is None:
+        db = DocumentDatabase()
+    return db
+
+
+def get_generator() -> ContentGenerator:
+    """获取生成器实例"""
+    global generator
+    if generator is None:
+        generator = ContentGenerator(get_db())
+    return generator
+
+
+# ==================== 数据模型 ====================
+
+class GenerateRequest(BaseModel):
+    """生成请求"""
+    topic: str
+    textbook_version: str = "人教版"
+    grade_level: str = "高中"
+    chapter: str = ""
+    class_hours: str = "1课时"
+    students: str = ""
+
+
+class QARequest(BaseModel):
+    """问答请求"""
+    question: str
+
+
+class SearchRequest(BaseModel):
+    """搜索请求"""
+    query: str
+    n_results: int = 5
+    category: Optional[str] = None
+
+
+class ImportRequest(BaseModel):
+    """导入请求"""
+    use_multimodal: bool = True
+
+
+# ==================== 系统API ====================
+
+@app.get("/api/system/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "healthy", "version": "1.1.0"}
+
+
+@app.get("/api/system/status")
+async def system_status():
+    """系统状态"""
+    db = get_db()
+    stats = db.get_stats()
+    
+    # 检查OCR和Vision可用性
+    ocr_available = False
+    vision_available = False
+    
+    try:
+        import paddleocr
+        ocr_available = True
+    except ImportError:
+        pass
+    
+    try:
+        from core.vision import VisionProcessor
+        vision_available = True
+    except Exception:
+        pass
+    
+    return {
+        "database": stats,
+        "version": "1.1.0",
+        "features": {
+            "ocr": ocr_available,
+            "vision": vision_available,
+            "multimodal": ocr_available or vision_available
+        }
+    }
+
+
+# ==================== 文档管理API ====================
+
+@app.get("/api/documents")
+async def list_documents(category: Optional[str] = None):
+    """获取文档列表"""
+    db = get_db()
+    documents = db.list_documents(category=category)
+    return {"documents": documents}
+
+
+@app.post("/api/documents/import")
+async def import_document(
+    file: UploadFile = File(...), 
+    category: str = "textbook",
+    use_multimodal: bool = True,
+    chunk_size: int = 200,
+    chunk_overlap: int = 30
+):
+    """导入文档（支持分类存储、多模态处理和自定义切块参数）"""
+    try:
+        # 检查文件类型
+        allowed_extensions = ['.pdf', '.docx', '.txt', '.md', '.pptx']
+        file_ext = Path(file.filename).suffix.lower()
+        
+        if file_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"不支持的文件格式: {file_ext}，支持: {', '.join(allowed_extensions)}"
+            )
+        
+        # 按分类创建目录
+        docs_dir = get_docs_dir()
+        category_dir = docs_dir / category
+        category_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 保存文件到分类目录
+        file_path = category_dir / file.filename
+        
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        
+        # 加载文档（支持多模态）
+        docs = load_single_document(str(file_path), use_multimodal=use_multimodal)
+        
+        # 构建切块配置
+        chunk_cfg = {
+            "chunk_size": chunk_size,
+            "overlap": chunk_overlap,
+            "separators": ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
+        }
+        
+        # 添加到数据库（使用自定义切块参数，标准化路径）
+        db = get_db()
+        source_path = str(file_path).replace("\\", "/")
+        for doc in docs:
+            doc["metadata"]["source"] = source_path
+            doc["metadata"]["category"] = category
+            db.add(doc, chunk_cfg=chunk_cfg)
+        
+        return {
+            "status": "success", 
+            "filename": file.filename,
+            "category": category,
+            "file_path": source_path,
+            "documents_count": len(docs),
+            "multimodal": use_multimodal,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/documents/import-all")
+async def import_all_documents(use_multimodal: bool = True):
+    """导入所有文档"""
+    try:
+        docs_dir = get_docs_dir()
+        db = get_db()
+        
+        allowed_extensions = ['.pdf', '.docx', '.txt', '.md', '.pptx']
+        imported = 0
+        total_docs = 0
+        
+        for file_path in docs_dir.rglob("*"):
+            if file_path.is_file() and file_path.suffix in allowed_extensions:
+                try:
+                    docs = load_single_document(str(file_path), use_multimodal=use_multimodal)
+                    for doc in docs:
+                        doc["metadata"]["source"] = str(file_path)
+                        db.add(doc)
+                    imported += 1
+                    total_docs += len(docs)
+                    print(f"导入成功: {file_path} ({len(docs)}个文档)")
+                except Exception as e:
+                    print(f"导入失败 {file_path}: {e}")
+        
+        return {
+            "status": "success", 
+            "imported": imported,
+            "total_documents": total_docs,
+            "multimodal": use_multimodal
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/documents/stats")
+async def document_stats():
+    """获取文档统计"""
+    db = get_db()
+    return db.get_stats()
+
+
+class DeleteRequest(BaseModel):
+    """删除请求"""
+    source: str
+
+
+@app.post("/api/documents/delete")
+async def delete_document(request: DeleteRequest):
+    """删除文档"""
+    try:
+        db = get_db()
+        # 标准化路径
+        source = request.source.replace("\\", "/")
+        db.delete(source)
+        return {"status": "success", "source": source}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/documents/content")
+async def get_document_content(source: str):
+    """获取文档内容"""
+    try:
+        # 读取文件内容
+        file_path = Path(source)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        content = read_file(str(file_path))
+        return {"status": "success", "source": source, "content": content}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 教材目录API ====================
+
+# 学段名称映射（中文 -> 英文目录名）
+LEVEL_MAPPING = {
+    "初中": "junior",
+    "高中": "senior",
+    "junior": "junior",
+    "senior": "senior"
+}
+
+
+def get_level_dir(level: str) -> Path:
+    """获取学段目录"""
+    catalog_dir = get_catalog_dir()
+    # 将中文转换为英文目录名
+    level_key = LEVEL_MAPPING.get(level, level.lower())
+    return catalog_dir / level_key
+
+
+@app.get("/api/catalog/levels")
+async def get_levels():
+    """获取学段列表"""
+    return {"levels": ["初中", "高中"]}
+
+
+@app.get("/api/catalog/grades")
+async def get_grades(level: str):
+    """获取年级列表"""
+    level_dir = get_level_dir(level)
+    
+    if not level_dir.exists():
+        return {"grades": []}
+    
+    grades = []
+    for json_file in level_dir.glob("*.json"):
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            for grade in data.get("年级", []):
+                grades.append(grade["name"])
+    
+    return {"grades": grades}
+
+
+@app.get("/api/catalog/chapters")
+async def get_chapters(level: str, grade: str, semester: str):
+    """获取章节列表"""
+    level_dir = get_level_dir(level)
+    
+    if not level_dir.exists():
+        return {"chapters": []}
+    
+    for json_file in level_dir.glob("*.json"):
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            for g in data.get("年级", []):
+                if g["name"] == grade:
+                    for s in g.get("学期", []):
+                        if s["name"] == semester:
+                            return {"chapters": s.get("章节", [])}
+    
+    return {"chapters": []}
+
+
+# ==================== 内容生成API ====================
+
+@app.post("/api/generate/speech-draft")
+async def generate_speech_draft(request: GenerateRequest):
+    """生成说课稿"""
+    try:
+        generator = get_generator()
+        result = generator.generate_speech_draft(
+            topic=request.topic,
+            textbook_version=request.textbook_version,
+            grade_level=request.grade_level,
+            chapter=request.chapter,
+            class_hours=request.class_hours
+        )
+        return {"status": "success", "content": result["content"], "sources": result["sources"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate/lecture-draft")
+async def generate_lecture_draft(request: GenerateRequest):
+    """生成讲课稿"""
+    try:
+        generator = get_generator()
+        result = generator.generate_lecture_draft(
+            topic=request.topic,
+            textbook_version=request.textbook_version,
+            grade_level=request.grade_level,
+            chapter=request.chapter,
+            class_hours=request.class_hours
+        )
+        return {"status": "success", "content": result["content"], "sources": result["sources"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate/lesson-plan")
+async def generate_lesson_plan(request: GenerateRequest):
+    """生成教案"""
+    try:
+        generator = get_generator()
+        result = generator.generate_lesson_plan(
+            topic=request.topic,
+            textbook_version=request.textbook_version,
+            grade_level=request.grade_level,
+            chapter=request.chapter,
+            class_hours=request.class_hours,
+            students=request.students
+        )
+        return {"status": "success", "content": result["content"], "sources": result["sources"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate/study-plan")
+async def generate_study_plan(request: GenerateRequest):
+    """生成学案"""
+    try:
+        generator = get_generator()
+        result = generator.generate_study_plan(
+            topic=request.topic,
+            textbook_version=request.textbook_version,
+            grade_level=request.grade_level,
+            chapter=request.chapter,
+            class_hours=request.class_hours
+        )
+        return {"status": "success", "content": result["content"], "sources": result["sources"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 搜索API ====================
+
+@app.post("/api/search")
+async def search_documents(request: SearchRequest):
+    """搜索文档"""
+    try:
+        db = get_db()
+        results = db.search(
+            query=request.query,
+            n_results=request.n_results,
+            category=request.category
+        )
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 问答API ====================
+
+@app.post("/api/qa")
+async def question_answer(request: QARequest):
+    """智能问答"""
+    try:
+        generator = get_generator()
+        result = generator.answer_question(request.question)
+        return {"status": "success", "answer": result["answer"], "sources": result["sources"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 静态文件服务 ====================
+
+# 挂载前端静态文件
+frontend_dir = Path(__file__).parent.parent / "frontend" / "dist"
+if frontend_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_dir / "assets")), name="assets")
+
+
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    """服务前端页面"""
+    frontend_dir = Path(__file__).parent.parent / "frontend" / "dist"
+    
+    # 尝试返回静态文件
+    file_path = frontend_dir / full_path
+    if file_path.exists() and file_path.is_file():
+        return FileResponse(str(file_path))
+    
+    # 返回index.html（SPA路由）
+    index_path = frontend_dir / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
+    
+    return {"message": "GeoTeach AI Agent API"}
+
+
+# ==================== 启动入口 ====================
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    config = get_web_config()
+    uvicorn.run(
+        "servers.web:app",
+        host=config["host"],
+        port=config["port"],
+        reload=True
+    )

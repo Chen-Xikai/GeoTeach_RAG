@@ -1,0 +1,60 @@
+{
+  "categories": [
+    {
+      "id": "textbook",
+      "name": "课本资料",
+      "description": "教材内容、知识点",
+      "icon": "📖",
+      "dir": "data/textbook"
+    },
+    {
+      "id": "curriculum",
+      "name": "课程标准",
+      "description": "课标要求、核心素养",
+      "icon": "📋",
+      "dir": "data/curriculum"
+    },
+    {
+      "id": "lesson_plan",
+      "name": "教案库",
+      "description": "自己的教案",
+      "icon": "📝",
+      "dir": "data/lesson_plan"
+    },
+    {
+      "id": "study_plan",
+      "name": "学案库",
+      "description": "自己的学案",
+      "icon": "📄",
+      "dir": "data/study_plan"
+    },
+    {
+      "id": "excellent_lesson",
+      "name": "优秀教案",
+      "description": "参考用优秀教案",
+      "icon": "⭐",
+      "dir": "data/excellent_lesson"
+    },
+    {
+      "id": "excellent_study",
+      "name": "优秀学案",
+      "description": "参考用优秀学案",
+      "icon": "⭐",
+      "dir": "data/excellent_study"
+    },
+    {
+      "id": "speech_draft",
+      "name": "说课稿",
+      "description": "说课稿模板/范文",
+      "icon": "🎤",
+      "dir": "data/speech_draft"
+    },
+    {
+      "id": "lecture_draft",
+      "name": "讲课稿",
+      "description": "讲课稿模板/范文",
+      "icon": "👨‍🏫",
+      "dir": "data/lecture_draft"
+    }
+  ]
+}

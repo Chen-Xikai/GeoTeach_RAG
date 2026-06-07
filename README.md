@@ -1,124 +1,126 @@
-# GeoTeach RAG 地理教学助手
+# GeoTeach AI Agent - 地理教学AI助手
 
-基于RAG（检索增强生成）的地理教学问答系统，使用Milvus向量数据库、LangChain框架和Streamlit界面。
+基于 RAG（检索增强生成）技术的地理教学 AI 助手系统，支持多模态文档处理、AI内容生成、智能问答等功能。
 
 ## 功能特点
 
-- 支持多种文档格式：PDF、DOCX、TXT、Markdown
-- 使用Jina Embeddings进行文本向量化（免费API）
-- 使用Milvus作为向量数据库（本地Docker部署）
-- 支持多轮对话，保留历史上下文
-- 显示引用的文档片段，方便验证
-- 中文界面，操作简单
+### 📚 资料管理
+- 支持 PPT、PDF、DOCX、TXT、Markdown 格式
+- 按教材目录分类管理（人教版初中+高中）
+- 多模态处理（图片识别、OCR、表格提取）
+
+### 🛠️ AI内容生成
+- **说课稿** - 基于参考资料自动生成专业说课稿
+- **讲课稿** - 生成详细的讲课稿
+- **教案** - 生成规范的教案
+- **学案** - 生成情境化学案
+
+### ❓ 智能问答
+- 解答地理教学相关问题
+- 基于知识库提供专业建议
+
+### 📖 教材目录
+- 人教版初中地理（七年级、八年级）
+- 人教版高中地理（必修、选择性必修）
+
+### 🔌 MCP集成
+- 支持 Model Context Protocol
+- 可与 OpenCode 等AI助手集成
+- 知识库智能检索
+
+### ⚡ 性能优化
+- Embedding缓存机制，减少API调用
+- Milvus IVF_FLAT索引，加速向量检索
+- 批量处理，提高吞吐量
 
 ## 快速开始
 
-### 1. 启动Milvus
-
-```bash
-docker-compose up -d
-```
-
-等待Milvus启动完成（约1-2分钟），可以通过以下命令检查状态：
-
-```bash
-docker-compose ps
-```
-
-### 2. 安装Python依赖
+### 1. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 配置API密钥
+### 2. 配置环境变量
 
-编辑 `.env` 文件，填入你的API密钥：
-
-```env
-# Jina Embeddings API（免费注册：https://jina.ai/）
-JINA_API_KEY=your_jina_api_key_here
-
-# mimo-v2.5pro LLM API
-MIMO_API_KEY=your_mimo_api_key_here
-MIMO_BASE_URL=your_mimo_base_url_here
-```
-
-### 4. 启动Web界面
+复制 `config/.env.example` 为 `config/.env`，填入 API 密钥：
 
 ```bash
-streamlit run app.py
+cp config/.env.example config/.env
 ```
 
-浏览器会自动打开 http://localhost:8501
+### 3. 启动Web服务
 
-## 使用说明
+```bash
+python -m servers.web
+```
 
-### 上传文档
+### 4. 启动MCP服务（可选）
 
-1. 在左侧边栏点击"上传文档"
-2. 选择要上传的文件（支持PDF、DOCX、TXT、Markdown）
-3. 点击"处理上传的文档"按钮
-4. 等待处理完成
+```bash
+python -m servers.mcp
+```
 
-### 开始对话
+### 5. 访问应用
 
-1. 确保已点击"初始化RAG系统"按钮
-2. 在底部输入框输入你的问题
-3. 系统会自动检索相关文档并生成回答
-4. 点击"📎 查看引用的文档片段"可以查看引用来源
+- Web界面：http://localhost:9767
+- MCP服务：http://localhost:9766
 
-### 知识库管理
+## 技术栈
 
-- **刷新状态**：查看当前知识库中的文档片段数量
-- **清空知识库**：删除所有已上传的文档（谨慎操作）
+| 组件 | 技术 |
+|------|------|
+| **前端** | Vue 3 + Element Plus + Vite |
+| **后端** | Python 3.11+, FastAPI, Uvicorn |
+| **向量数据库** | Milvus Lite |
+| **Embedding** | BGE-large-zh-v1.5 (1024维) |
+| **LLM** | Qwen2.5-7B-Instruct |
+| **Vision** | Qwen2.5-VL-7B-Instruct |
+| **协议** | MCP (Model Context Protocol) |
 
 ## 项目结构
 
 ```
 GeoTeach_RAG/
-├── docker-compose.yml      # Milvus部署配置
-├── requirements.txt        # Python依赖
-├── .env                    # 环境变量配置
-├── config.py              # 配置管理
-├── document_processor.py  # 文档处理模块
-├── vector_store.py        # 向量库操作模块
-├── rag_chain.py           # RAG检索链模块
-├── app.py                 # Streamlit Web界面
-└── data/                  # 文档存放目录
-    ├── pdf/
-    ├── docx/
-    └── txt/
+├── config/          # 配置层
+├── core/            # 核心层
+│   ├── database.py  # Milvus数据库操作
+│   ├── cache.py     # Embedding缓存
+│   └── async_utils.py # 异步工具
+├── servers/         # 服务层
+│   ├── web.py       # Web API
+│   └── mcp.py       # MCP服务
+├── frontend/        # 前端（Vue 3）
+├── data/            # 数据目录
+└── runtime/         # 运行时
 ```
 
-## 常见问题
+## 文档
 
-### Q: Milvus启动失败怎么办？
+- [技术文档](TECHNICAL_DOCS.md) - 详细的系统架构和API文档
+- [教材目录](config/catalog/) - 人教版地理教材目录
 
-A: 确保Docker已安装并运行，检查端口19530和9091是否被占用。
+## 更新日志
 
-### Q: Jina Embeddings如何获取API Key？
+### v1.3.0 (当前版本)
+- 新增 Embedding 缓存机制
+- 新增 MCP 服务支持
+- 新增 异步处理优化
+- 优化 Milvus 索引参数
+- 修复 文档上传分类问题
+- 修复 删除功能实现
 
-A: 访问 https://jina.ai/ 注册账号，免费额度为每月100万Token。
+### v1.2.0
+- 迁移到 Milvus Lite 向量数据库
+- 优化文档处理流程
 
-### Q: 支持哪些文档格式？
+### v1.1.0
+- 新增 PPT 支持
+- 新增多模态处理
+- 新增 Vision API 集成
 
-A: 目前支持PDF、DOCX、TXT和Markdown格式。
-
-### Q: 如何提高检索效果？
-
-A: 
-- 确保文档内容质量高、格式规范
-- 调整 `.env` 中的 `CHUNK_SIZE` 和 `CHUNK_OVERLAP` 参数
-- 增加 `TOP_K` 值以获取更多相关文档
-
-## 技术栈
-
-- **向量数据库**: Milvus 2.4
-- **Embedding**: Jina Embeddings v3
-- **LLM**: mimo-v2.5pro
-- **框架**: LangChain
-- **界面**: Streamlit
+### v1.0.0
+- 初始版本
 
 ## 许可证
 

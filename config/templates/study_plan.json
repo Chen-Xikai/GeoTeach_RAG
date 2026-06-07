@@ -1,0 +1,56 @@
+{
+  "id": "study_plan",
+  "name": "学案",
+  "description": "生成情境化地理学案",
+  "version": "1.0.0",
+  "sections": [
+    {
+      "id": "basic_info",
+      "title": "基本信息",
+      "required": true,
+      "fields": ["班级", "姓名"]
+    },
+    {
+      "id": "situational_introduction",
+      "title": "情境启思",
+      "required": true,
+      "prompt": "请设计情境导入，使用真实情境激发学生兴趣，提出引导性问题。"
+    },
+    {
+      "id": "practical_activity",
+      "title": "实践活动",
+      "required": true,
+      "prompt": "请设计实践活动，包括教具操作、小组合作等。"
+    },
+    {
+      "id": "initial_exploration",
+      "title": "初步探索",
+      "required": true,
+      "prompt": "请设计初步探索环节，引导学生进行基础探究。"
+    },
+    {
+      "id": "cognitive_conflict",
+      "title": "情境再现",
+      "required": true,
+      "prompt": "请设计认知冲突环节，通过与实际现象的矛盾引发学生深入思考。"
+    },
+    {
+      "id": "deep_learning",
+      "title": "深入学习",
+      "required": true,
+      "prompt": "请设计深入学习环节，引导学生掌握核心知识。"
+    },
+    {
+      "id": "homework",
+      "title": "课后作业",
+      "required": true,
+      "prompt": "请设计课后作业，包括巩固练习和拓展任务。"
+    },
+    {
+      "id": "preview",
+      "title": "情境再现（预习）",
+      "required": false,
+      "prompt": "请设计预习引导，为下节课做铺垫。"
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "id": "speech_draft",
+  "name": "说课稿",
+  "description": "生成专业的地理说课稿",
+  "version": "1.0.0",
+  "sections": [
+    {
+      "id": "opening",
+      "title": "开场白",
+      "required": true,
+      "prompt": "请生成开场白，包括评委问候、选手介绍、课程来源。"
+    },
+    {
+      "id": "design_concept",
+      "title": "设计理念",
+      "required": true,
+      "prompt": "请阐述本节课的设计理念，包括：\n1. 教学方法选择（如情境教学、探究式教学等）\n2. 教学逻辑设计（如要素增加、层层递进等）\n3. 教学特色亮点"
+    },
+    {
+      "id": "curriculum_analysis",
+      "title": "课标分析",
+      "required": true,
+      "prompt": "请分析课程标准要求：\n1. 课程标准原文\n2. 课标解读（行为条件、行为动词、认知层次）\n3. 教学应对策略"
+    },
+    {
+      "id": "student_analysis",
+      "title": "学情分析",
+      "required": true,
+      "prompt": "请分析学生情况：\n1. 知识储备\n2. 能力基础\n3. 心理特点\n4. 思维方式\n5. 应对策略"
+    },
+    {
+      "id": "teaching_objectives",
+      "title": "教学目标",
+      "required": true,
+      "prompt": "请制定教学目标（核心素养导向）：\n1. 地理实践力\n2. 综合思维\n3. 区域认知\n4. 人地协调观"
+    },
+    {
+      "id": "key_difficulties",
+      "title": "教学重难点",
+      "required": true,
+      "prompt": "请确定教学重难点：\n1. 教学重点（依据课标）\n2. 教学难点（依据学情）"
+    },
+    {
+      "id": "teaching_methods",
+      "title": "教学方法",
+      "required": true,
+      "prompt": "请说明教学方法：\n1. 教学方法（情境教学、探究式教学、教具辅助等）\n2. 学习方法（问题解决、合作探究等）"
+    },
+    {
+      "id": "teaching_process",
+      "title": "教学过程",
+      "required": true,
+      "prompt": "请描述教学过程：\n1. 教学阶段划分（与情境/历史发展对应）\n2. 各阶段主要活动\n3. 时间分配"
+    },
+    {
+      "id": "closing",
+      "title": "结束语",
+      "required": true,
+      "prompt": "请生成结束语，过渡到讲课环节。"
+    }
+  ]
+}

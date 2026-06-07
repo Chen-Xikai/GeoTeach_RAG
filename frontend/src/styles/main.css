@@ -1,0 +1,146 @@
+/* 全局样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background-color: #f5f7fa;
+}
+
+/* 页面标题样式 */
+.page-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 24px 32px;
+  border-radius: 12px;
+  color: white;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  color: white;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.page-header p {
+  opacity: 0.9;
+  margin: 8px 0 0 0;
+  font-size: 14px;
+}
+
+/* 卡片样式 */
+.content-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  margin-bottom: 16px;
+}
+
+/* 统计卡片 */
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-info h3 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  color: #1f2937;
+}
+
+.stat-info p {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 4px 0 0 0;
+}
+
+/* 操作按钮样式 */
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.action-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.action-btn-primary:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* 目录树样式 */
+.catalog-tree {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.tree-node {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.tree-node:hover {
+  background: #f3f4f6;
+}
+
+.tree-node.active {
+  background: #ede9fe;
+  color: #667eea;
+}
+
+/* 结果展示样式 */
+.result-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  border-left: 4px solid #667eea;
+  margin-top: 16px;
+}
+
+/* 加载状态 */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}

@@ -4,37 +4,68 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual Environment
+.venv/
 venv/
 ENV/
-env.bak/
-venv.bak/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # Environment variables
 .env
 
-# Vector database
-chroma_db/
-milvus_local.db
-milvus_test.db/
-milvus_test2.db/
-*.db
+# Data directories (keep structure, ignore content)
+data/chroma_db/*
+!data/chroma_db/.gitkeep
+data/generated/*
+!data/generated/.gitkeep
+data/docs/*
+!data/docs/.gitkeep
+data/textbook/*
+!data/textbook/.gitkeep
+data/curriculum/*
+!data/curriculum/.gitkeep
+data/lesson_plan/*
+!data/lesson_plan/.gitkeep
+data/study_plan/*
+!data/study_plan/.gitkeep
+data/excellent_lesson/*
+!data/excellent_lesson/.gitkeep
+data/excellent_study/*
+!data/excellent_study/.gitkeep
+data/speech_draft/*
+!data/speech_draft/.gitkeep
+data/lecture_draft/*
+!data/lecture_draft/.gitkeep
 
-# Data files
-data/**/*.pdf
-data/**/*.docx
-data/**/*.txt
-data/**/*.md
+# Runtime
+runtime/logs/*
+!runtime/logs/.gitkeep
+runtime/state/*
+!runtime/state/.gitkeep
 
-# Streamlit
-.streamlit/
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# ChromaDB
+chroma_db/
+*.db
+
+# Models
+models/

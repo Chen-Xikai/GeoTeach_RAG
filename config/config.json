@@ -1,0 +1,78 @@
+{
+  "collection": {
+    "name": "geoteach_docs"
+  },
+  "docs": {
+    "dir": "data/docs"
+  },
+  "chroma": {
+    "dir": "data/chroma_db"
+  },
+  "generated": {
+    "dir": "data/generated"
+  },
+  "images": {
+    "dir": "data/images"
+  },
+  "chunk": {
+    "templates": {
+      "chinese": {
+        "name": "中文文档专用",
+        "chunk_size": 500,
+        "overlap": 50,
+        "strategy": "recursive",
+        "separators": ["\n\n", "\n", "。", "！", "？", "；", "，", "、", " ", ""]
+      },
+      "academic": {
+        "name": "学术文献",
+        "chunk_size": 1000,
+        "overlap": 100,
+        "strategy": "recursive",
+        "separators": ["\n\n", "\n", ".", " ", ""]
+      },
+      "lesson_plan": {
+        "name": "教案专用",
+        "chunk_size": 800,
+        "overlap": 80,
+        "strategy": "recursive",
+        "separators": ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
+      }
+    },
+    "default_template": "chinese"
+  },
+  "vision": {
+    "enabled": true,
+    "ocr_engine": "paddleocr",
+    "ocr_language": "ch",
+    "vision_model": "Qwen/Qwen2.5-VL-7B-Instruct",
+    "table_recognition": true,
+    "image_description": true,
+    "extract_geographic_info": true
+  },
+  "retrieval": {
+    "k": 5,
+    "fetch_k": 15
+  },
+  "templates": {
+    "speech_draft": {
+      "name": "说课稿",
+      "enabled": true,
+      "max_tokens": 4096
+    },
+    "lecture_draft": {
+      "name": "讲课稿",
+      "enabled": true,
+      "max_tokens": 4096
+    },
+    "lesson_plan": {
+      "name": "教案",
+      "enabled": true,
+      "max_tokens": 4096
+    },
+    "study_plan": {
+      "name": "学案",
+      "enabled": true,
+      "max_tokens": 4096
+    }
+  }
+}
