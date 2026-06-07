@@ -133,7 +133,7 @@
             </div>
             
             <div class="result-content">
-              <pre>{{ generatedContent }}</pre>
+              <MarkdownRenderer :content="generatedContent" />
             </div>
           </div>
           
@@ -151,6 +151,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { catalogApi, generateApi } from '@/api'
+import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 
 const activeTab = ref('speech_draft')
 const generating = ref(false)
@@ -327,13 +328,6 @@ onMounted(() => {
   padding: 16px;
   max-height: 600px;
   overflow-y: auto;
-}
-
-.result-content pre {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  font-family: inherit;
-  margin: 0;
 }
 
 .empty-state {

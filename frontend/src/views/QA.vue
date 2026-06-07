@@ -64,7 +64,14 @@
                 <el-icon v-else :size="24"><ChatDotRound /></el-icon>
               </div>
               <div class="message-content">
-                <div class="message-text">{{ msg.content }}</div>
+                <div class="message-text" :class="{ 'markdown-content': msg.role === 'assistant' }">
+                  <template v-if="msg.role === 'assistant'">
+                    <MarkdownRenderer :content="msg.content" />
+                  </template>
+                  <template v-else>
+                    {{ msg.content }}
+                  </template>
+                </div>
                 <div class="message-time">{{ msg.time }}</div>
               </div>
             </div>
@@ -113,6 +120,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { qaApi, documentsApi } from '@/api'
+import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 
 const messages = ref([])
 const inputMessage = ref('')
@@ -342,5 +350,17 @@ onMounted(async () => {
 
 .example-list li:hover {
   text-decoration: underline;
+}
+
+.markdown-content {
+  padding: 8px 12px;
+}
+
+.markdown-content :deep(p) {
+  margin: 0 0 8px 0;
+}
+
+.markdown-content :deep(p:last-child) {
+  margin-bottom: 0;
 }
 </style>
