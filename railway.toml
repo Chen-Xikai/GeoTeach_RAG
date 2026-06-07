@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    ports:
+      - ${PORT:-9767}
+    env_file:
+      - .env
+    volumes:
+      - data:/app/data
+    restart: unless-stopped
+
+volumes:
+  data:

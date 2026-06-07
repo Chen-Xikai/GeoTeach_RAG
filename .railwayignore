@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.opencode
+*.pyc
+__pycache__
+node_modules
+.vite
+data/cache/*
+data/milvus.db/*
+data/docs/*
+runtime/logs/*
+*.db

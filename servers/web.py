@@ -285,6 +285,64 @@ async def get_document_content(source: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/documents/download/{category}/{filename}")
+async def download_document(category: str, filename: str):
+    """下载文档文件"""
+    try:
+        docs_dir = get_docs_dir()
+        file_path = docs_dir / category / filename
+        
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        return FileResponse(
+            path=str(file_path),
+            filename=filename,
+            media_type='application/octet-stream'
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/documents/list-files")
+async def list_files(category: str = None):
+    """列出所有文件（用于同步）"""
+    try:
+        docs_dir = get_docs_dir()
+        files = []
+        
+        allowed_extensions = ['.pdf', '.docx', '.txt', '.md', '.pptx']
+        
+        if category:
+            scan_dir = docs_dir / category
+            if scan_dir.exists():
+                for f in scan_dir.iterdir():
+                    if f.is_file() and f.suffix in allowed_extensions:
+                        files.append({
+                            "filename": f.name,
+                            "category": category,
+                            "size": f.stat().st_size,
+                            "modified": f.stat().st_mtime
+                        })
+        else:
+            for cat_dir in docs_dir.iterdir():
+                if cat_dir.is_dir():
+                    for f in cat_dir.iterdir():
+                        if f.is_file() and f.suffix in allowed_extensions:
+                            files.append({
+                                "filename": f.name,
+                                "category": cat_dir.name,
+                                "size": f.stat().st_size,
+                                "modified": f.stat().st_mtime
+                            })
+        
+        return {"status": "success", "files": files, "count": len(files)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== 教材目录API ====================
 
 # 学段名称映射（中文 -> 英文目录名）

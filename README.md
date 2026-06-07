@@ -98,6 +98,7 @@ GeoTeach_RAG/
 ## 文档
 
 - [技术文档](TECHNICAL_DOCS.md) - 详细的系统架构和API文档
+- [部署指南](DEPLOY.md) - Railway部署和文件同步
 - [教材目录](config/catalog/) - 人教版地理教材目录
 
 ## 更新日志
