@@ -27,7 +27,11 @@ export const documentsApi = {
   },
   importAll: () => api.post('/documents/import-all'),
   stats: () => api.get('/documents/stats'),
-  delete: (source) => api.post('/documents/delete', { source })
+  delete: (source) => api.post('/documents/delete', { source }),
+  // 待审核文件API
+  pending: () => api.get('/documents/pending'),
+  approve: (pendingId) => api.post('/documents/approve', { pending_id: pendingId, approved: true }),
+  reject: (pendingId) => api.post('/documents/approve', { pending_id: pendingId, approved: false })
 }
 
 // 教材目录API

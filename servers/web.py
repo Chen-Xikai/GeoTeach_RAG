@@ -151,7 +151,7 @@ async def import_document(
     chunk_size: int = 200,
     chunk_overlap: int = 30
 ):
-    """导入文档（支持分类存储、多模态处理和自定义切块参数）"""
+    """上传文档到待审核目录（安全模式）"""
     try:
         # 检查文件类型
         allowed_extensions = ['.pdf', '.docx', '.txt', '.md', '.pptx']
@@ -163,46 +163,159 @@ async def import_document(
                 detail=f"不支持的文件格式: {file_ext}，支持: {', '.join(allowed_extensions)}"
             )
         
-        # 按分类创建目录
+        # 保存到待审核目录
         docs_dir = get_docs_dir()
-        category_dir = docs_dir / category
-        category_dir.mkdir(parents=True, exist_ok=True)
+        pending_dir = docs_dir / "_pending"
+        pending_dir.mkdir(parents=True, exist_ok=True)
         
-        # 保存文件到分类目录
-        file_path = category_dir / file.filename
+        # 生成唯一文件名（避免冲突）
+        import time
+        timestamp = int(time.time())
+        safe_filename = f"{timestamp}_{file.filename}"
+        file_path = pending_dir / safe_filename
         
         with open(file_path, "wb") as f:
             content = await file.read()
             f.write(content)
         
-        # 加载文档（支持多模态）
-        docs = load_single_document(str(file_path), use_multimodal=use_multimodal)
-        
-        # 构建切块配置
-        chunk_cfg = {
+        # 保存元数据
+        meta_path = file_path.with_suffix(".meta.json")
+        import json
+        meta = {
+            "original_filename": file.filename,
+            "category": category,
+            "use_multimodal": use_multimodal,
             "chunk_size": chunk_size,
-            "overlap": chunk_overlap,
-            "separators": ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
+            "chunk_overlap": chunk_overlap,
+            "upload_time": timestamp,
+            "file_size": len(content),
+            "status": "pending"
         }
-        
-        # 添加到数据库（使用自定义切块参数，标准化路径）
-        db = get_db()
-        source_path = str(file_path).replace("\\", "/")
-        for doc in docs:
-            doc["metadata"]["source"] = source_path
-            doc["metadata"]["category"] = category
-            db.add(doc, chunk_cfg=chunk_cfg)
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
         
         return {
-            "status": "success", 
+            "status": "pending", 
+            "message": "文件已上传，等待管理员审核",
             "filename": file.filename,
-            "category": category,
-            "file_path": source_path,
-            "documents_count": len(docs),
-            "multimodal": use_multimodal,
-            "chunk_size": chunk_size,
-            "chunk_overlap": chunk_overlap
+            "pending_id": safe_filename
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/documents/pending")
+async def list_pending_documents():
+    """列出待审核的文档"""
+    try:
+        docs_dir = get_docs_dir()
+        pending_dir = docs_dir / "_pending"
+        
+        if not pending_dir.exists():
+            return {"status": "success", "files": [], "count": 0}
+        
+        import json
+        files = []
+        for meta_file in pending_dir.glob("*.meta.json"):
+            try:
+                with open(meta_file, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                meta["pending_id"] = meta_file.stem.replace(".meta", "")
+                files.append(meta)
+            except Exception:
+                continue
+        
+        # 按上传时间倒序
+        files.sort(key=lambda x: x.get("upload_time", 0), reverse=True)
+        
+        return {"status": "success", "files": files, "count": len(files)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ApproveRequest(BaseModel):
+    """审核请求"""
+    pending_id: str
+    approved: bool
+
+
+@app.post("/api/documents/approve")
+async def approve_document(request: ApproveRequest):
+    """审核文档（批准或拒绝）"""
+    try:
+        docs_dir = get_docs_dir()
+        pending_dir = docs_dir / "_pending"
+        
+        # 查找文件
+        file_path = pending_dir / request.pending_id
+        meta_path = file_path.with_suffix(".meta.json")
+        
+        if not file_path.exists() or not meta_path.exists():
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        # 读取元数据
+        import json
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        
+        if request.approved:
+            # 批准：移动到正式目录
+            category = meta.get("category", "textbook")
+            category_dir = docs_dir / category
+            category_dir.mkdir(parents=True, exist_ok=True)
+            
+            original_filename = meta.get("original_filename", file_path.name)
+            target_path = category_dir / original_filename
+            
+            # 如果目标已存在，添加时间戳
+            if target_path.exists():
+                import time
+                name = Path(original_filename).stem
+                ext = Path(original_filename).suffix
+                target_path = category_dir / f"{name}_{int(time.time())}{ext}"
+            
+            # 移动文件
+            import shutil
+            shutil.move(str(file_path), str(target_path))
+            
+            # 处理文档（添加到向量库）
+            from core.document import load_single_document
+            docs = load_single_document(str(target_path), use_multimodal=meta.get("use_multimodal", True))
+            
+            chunk_cfg = {
+                "chunk_size": meta.get("chunk_size", 200),
+                "overlap": meta.get("chunk_overlap", 30),
+                "separators": ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
+            }
+            
+            db = get_db()
+            source_path = str(target_path).replace("\\", "/")
+            for doc in docs:
+                doc["metadata"]["source"] = source_path
+                doc["metadata"]["category"] = category
+                db.add(doc, chunk_cfg=chunk_cfg)
+            
+            # 删除元数据文件
+            meta_path.unlink()
+            
+            return {
+                "status": "approved",
+                "message": f"文件已批准并添加到 {category} 分类",
+                "filename": original_filename,
+                "documents_count": len(docs)
+            }
+        else:
+            # 拒绝：删除文件
+            file_path.unlink()
+            meta_path.unlink()
+            
+            return {
+                "status": "rejected",
+                "message": "文件已拒绝并删除",
+                "filename": meta.get("original_filename", "")
+            }
     except HTTPException:
         raise
     except Exception as e:

@@ -3,8 +3,9 @@
 ## 目录
 
 1. [Railway部署](#1-railway部署)
-2. [文件同步](#2-文件同步)
+2. [文件审核流程](#2-文件审核流程)
 3. [环境变量配置](#3-环境变量配置)
+4. [安全说明](#4-安全说明)
 
 ---
 
@@ -13,33 +14,14 @@
 ### 1.1 准备工作
 
 1. 注册 [Railway](https://railway.app) 账号
-2. 安装 Railway CLI（可选）
+2. Fork 项目到你的 GitHub 账号
 
 ### 1.2 部署步骤
 
-#### 方法一：通过GitHub部署（推荐）
-
-1. Fork 项目到你的 GitHub 账号
-2. 登录 Railway
-3. 点击 "New Project" → "Deploy from GitHub repo"
-4. 选择你 fork 的仓库
-5. Railway 会自动检测 Dockerfile 并部署
-
-#### 方法二：通过CLI部署
-
-```bash
-# 安装 Railway CLI
-npm install -g @railway/cli
-
-# 登录
-railway login
-
-# 初始化项目
-railway init
-
-# 部署
-railway up
-```
+1. 登录 Railway
+2. 点击 "New Project" → "Deploy from GitHub repo"
+3. 选择你 fork 的仓库
+4. Railway 会自动检测 Dockerfile 并部署
 
 ### 1.3 配置环境变量
 
@@ -57,54 +39,52 @@ WEB_PORT=${{PORT}}
 
 ### 1.4 配置域名
 
-1. 在 Railway 项目设置中点击 "Settings"
-2. 在 "Networking" 部分可以配置自定义域名
-3. Railway 会自动提供一个 `*.up.railway.app` 域名
+Railway 会自动提供一个 `*.up.railway.app` 域名，也可以配置自定义域名。
 
 ---
 
-## 2. 文件同步
+## 2. 文件审核流程
 
-### 2.1 使用同步脚本
+### 2.1 安全机制
 
-在本地运行同步脚本，从 Railway 下载新上传的文件：
+为了防止恶意文件（病毒、木马等）被直接入库，系统采用**人工审核机制**：
 
-```bash
-# 单次同步
-python sync_files.py --server https://your-app.up.railway.app
+1. 用户上传文件 → 进入 `_pending` 待审核目录
+2. 管理员审核文件 → 批准或拒绝
+3. 批准后文件才会入库并被处理
 
-# 定时同步（每5分钟）
-python sync_files.py --server https://your-app.up.railway.app --interval 300
+### 2.2 审核方式
 
-# 指定本地目录
-python sync_files.py --server https://your-app.up.railway.app --local-dir data/docs
-```
+#### 方式一：Web界面审核
 
-### 2.2 设置定时任务
+1. 访问 Web 界面
+2. 点击"资料库"
+3. 切换到"待审核"标签页
+4. 查看文件信息，点击"批准"或"拒绝"
 
-#### Windows（任务计划程序）
-
-1. 打开 "任务计划程序"
-2. 创建基本任务
-3. 设置触发器（如每小时）
-4. 操作：启动程序 `python`
-5. 参数：`sync_files.py --server https://your-app.up.railway.app`
-
-#### Linux/Mac（crontab）
+#### 方式二：命令行审核脚本
 
 ```bash
-# 编辑crontab
-crontab -e
+# 列出待审核文件
+python review_files.py --server https://your-app.up.railway.app --list
 
-# 添加定时任务（每小时同步一次）
-0 * * * * cd /path/to/GeoTeach_RAG && python sync_files.py --server https://your-app.up.railway.app
+# 下载文件到本地审核
+python review_files.py --server https://your-app.up.railway.app --download <pending_id>
+
+# 批准文件
+python review_files.py --server https://your-app.up.railway.app --approve <pending_id>
+
+# 拒绝文件
+python review_files.py --server https://your-app.up.railway.app --reject <pending_id>
 ```
 
-### 2.3 同步状态
+### 2.3 审核建议
 
-同步状态保存在 `data/sync_state.json`，包含：
-- `last_sync`: 上次同步时间
-- `downloaded_files`: 已下载文件列表
+1. **检查文件类型**：确认是 PDF、DOCX、TXT、MD、PPTX
+2. **检查文件名**：避免可疑命名（如 `.exe.pdf`）
+3. **检查文件大小**：异常大的文件需要警惕
+4. **本地扫描**：下载后用杀毒软件扫描
+5. **内容预览**：确认内容是地理教学资料
 
 ---
 
@@ -130,51 +110,86 @@ crontab -e
 
 ---
 
-## 4. API接口
+## 4. 安全说明
 
-### 4.1 文件下载API
+### 4.1 文件安全
+
+- 所有上传文件先进入待审核目录
+- 不会被自动处理或入库
+- 管理员审核后才会被使用
+
+### 4.2 API安全
+
+- 文件下载API只对管理员开放
+- 建议配置 API 认证（可选）
+
+### 4.3 数据安全
+
+- Milvus 数据库存储在本地
+- 定期备份 `data/milvus.db` 目录
+
+---
+
+## 5. API接口
+
+### 5.1 文件上传（待审核）
+
+```
+POST /api/documents/import
+```
+
+文件进入 `_pending` 目录，等待审核。
+
+### 5.2 待审核文件列表
+
+```
+GET /api/documents/pending
+```
+
+### 5.3 审核文件
+
+```
+POST /api/documents/approve
+Body: { "pending_id": "xxx", "approved": true/false }
+```
+
+### 5.4 下载文件
 
 ```
 GET /api/documents/download/{category}/{filename}
 ```
 
-下载指定分类下的文件。
+---
 
-### 4.2 文件列表API
+## 6. 常见问题
 
-```
-GET /api/documents/list-files?category=textbook
-```
+### Q: 为什么文件没有被处理？
 
-列出所有文件，用于同步脚本。
+A: 文件需要管理员审核后才会被处理。请在"待审核"标签页中批准文件。
+
+### Q: 如何批量审核？
+
+A: 可以使用命令行脚本 `review_files.py` 进行批量操作。
+
+### Q: 误批准了恶意文件怎么办？
+
+A: 在"已入库"标签页中删除该文件。
+
+### Q: 如何自动化审核？
+
+A: 目前不支持自动审核，建议人工检查后批准。未来可以考虑集成杀毒扫描。
 
 ---
 
-## 5. 常见问题
+## 7. 更新日志
 
-### Q: Railway部署失败怎么办？
-
-A: 检查以下几点：
-1. Dockerfile 是否正确
-2. 依赖是否完整
-3. 环境变量是否配置
-
-### Q: 同步脚本连接失败怎么办？
-
-A: 检查以下几点：
-1. Railway 服务是否正常运行
-2. 域名是否正确
-3. 网络是否通畅
-
-### Q: 文件同步不完整怎么办？
-
-A: 删除 `data/sync_state.json` 重新同步。
-
----
-
-## 6. 更新日志
+### v1.3.1
+- 新增文件审核机制
+- 新增待审核文件列表
+- 新增审核脚本 `review_files.py`
+- 优化安全防护
 
 ### v1.3.0
 - 新增 Railway 部署支持
-- 新增 文件同步脚本
-- 新增 文件下载API
+- 新增 Embedding 缓存
+- 新增 MCP 服务支持
