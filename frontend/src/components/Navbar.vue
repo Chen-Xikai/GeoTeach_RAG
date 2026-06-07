@@ -2,8 +2,8 @@
   <div class="navbar">
     <div class="navbar-brand">
       <el-icon :size="24"><DataBoard /></el-icon>
-      <span>Ezy-RAG</span>
-      <span class="version">v1.0.0</span>
+      <span>GeoTeach RAG</span>
+      <span class="version">v1.4.0</span>
     </div>
     <div class="navbar-menu">
       <router-link to="/" class="nav-item" :class="{ active: activeIndex === '/' }">

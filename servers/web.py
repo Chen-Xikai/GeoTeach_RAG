@@ -1,39 +1,53 @@
+# -*- coding: utf-8 -*-
 """
-GeoTeach AI Agent - Web API服务器
-
-提供REST API接口和前端静态文件托管。
+GeoTeach RAG — Web API 服务器
+提供 REST API 接口 + WebSocket 实时进度 + 托管前端静态文件
+用法: python -m servers.web
 """
-
 import os
+import sys
 import json
+import asyncio
+import logging
+import socket
 from pathlib import Path
-from typing import List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
+from typing import List, Optional, Any
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from dotenv import load_dotenv
+load_dotenv(ROOT / "config" / ".env")
+
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from config import (
-    get_web_config,
-    get_docs_dir,
-    get_generated_dir,
-    get_catalog_dir,
-)
-from core.database import DocumentDatabase
-from core.document import load_single_document, read_file
-from core.generator import ContentGenerator
-
-
-# ==================== 初始化 ====================
-
-app = FastAPI(
-    title="GeoTeach AI Agent",
-    description="地理教学AI助手API（支持多模态）",
-    version="1.1.0"
+from config.settings import (
+    get_web_config, get_docs_dir, get_generated_dir, get_catalog_dir,
+    get_chunk_config, get_retrieval_config, get_collection_name
 )
 
-# CORS配置
+LOG_DIR = ROOT / "runtime" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_DIR / "web_api.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("GeoTeach-Web")
+
+app = FastAPI(title="GeoTeach RAG Web API", version="1.4.0")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,31 +56,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 全局实例
-db = None
-generator = None
+# ============================================================
+#  WebSocket 管理器
+# ============================================================
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
 
-def get_db() -> DocumentDatabase:
-    """获取数据库实例"""
-    global db
-    if db is None:
-        db = DocumentDatabase()
-    return db
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
 
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
-def get_generator() -> ContentGenerator:
-    """获取生成器实例"""
-    global generator
-    if generator is None:
-        generator = ContentGenerator(get_db())
-    return generator
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except:
+                pass
 
+manager = ConnectionManager()
 
-# ==================== 数据模型 ====================
+# 线程池，用于执行同步/重建等耗时操作
+executor = ThreadPoolExecutor(max_workers=2)
+
+# ============================================================
+#  数据模型
+# ============================================================
+
+class ApiResponse(BaseModel):
+    status: str
+    data: Any = None
+    message: str = ""
+
+class SearchRequest(BaseModel):
+    query: str
+    n_results: int = 5
+    category: Optional[str] = None
+
+class QARequest(BaseModel):
+    question: str
 
 class GenerateRequest(BaseModel):
-    """生成请求"""
     topic: str
     textbook_version: str = "人教版"
     grade_level: str = "高中"
@@ -74,615 +109,585 @@ class GenerateRequest(BaseModel):
     class_hours: str = "1课时"
     students: str = ""
 
-
-class QARequest(BaseModel):
-    """问答请求"""
-    question: str
-
-
-class SearchRequest(BaseModel):
-    """搜索请求"""
-    query: str
-    n_results: int = 5
-    category: Optional[str] = None
-
-
 class ImportRequest(BaseModel):
-    """导入请求"""
-    use_multimodal: bool = True
+    files: List[str]
 
+class SyncRequest(BaseModel):
+    source: str = "all"
 
-# ==================== 系统API ====================
+# ============================================================
+#  全局实例
+# ============================================================
+
+db = None
+generator = None
+
+def get_db():
+    global db
+    if db is None:
+        from core.database import DocumentDatabase
+        db = DocumentDatabase()
+    return db
+
+def get_generator():
+    global generator
+    if generator is None:
+        from core.generator import ContentGenerator
+        generator = ContentGenerator(get_db())
+    return generator
+
+# ============================================================
+#  工具函数
+# ============================================================
+
+def check_port(host: str, port: int) -> bool:
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except:
+        return False
+
+def get_local_documents(source: str = "all") -> List[str]:
+    """获取本地文档路径列表"""
+    from core.document import SUPPORTED_EXTENSIONS
+    
+    docs_dir = get_docs_dir()
+    paths = []
+    
+    if source in ("all", "docs"):
+        if docs_dir.exists():
+            for ext in SUPPORTED_EXTENSIONS:
+                for f in docs_dir.rglob(f"*{ext}"):
+                    if f.is_file():
+                        paths.append(str(f))
+    
+    return paths
+
+# ============================================================
+#  WebSocket 端点
+# ============================================================
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+# ============================================================
+#  系统 API
+# ============================================================
 
 @app.get("/api/system/health")
 async def health_check():
-    """健康检查"""
-    return {"status": "healthy", "version": "1.1.0"}
-
+    return {"status": "healthy", "version": "1.4.0"}
 
 @app.get("/api/system/status")
 async def system_status():
-    """系统状态"""
     db = get_db()
     stats = db.get_stats()
     
-    # 检查OCR和Vision可用性
-    ocr_available = False
-    vision_available = False
-    
-    try:
-        import paddleocr
-        ocr_available = True
-    except ImportError:
-        pass
-    
-    try:
-        from core.vision import VisionProcessor
-        vision_available = True
-    except Exception:
-        pass
-    
-    return {
-        "database": stats,
-        "version": "1.1.0",
-        "features": {
-            "ocr": ocr_available,
-            "vision": vision_available,
-            "multimodal": ocr_available or vision_available
+    return ApiResponse(
+        status="success",
+        data={
+            "version": "1.4.0",
+            "database": stats,
+            "services": {
+                "web": {"online": True, "port": int(os.getenv("WEB_PORT", "9767"))},
+                "mcp": {"online": check_port("127.0.0.1", int(os.getenv("MCP_SERVER_PORT", "9766"))), "port": int(os.getenv("MCP_SERVER_PORT", "9766"))},
+            }
         }
-    }
+    )
 
+# ============================================================
+#  配置 API
+# ============================================================
 
-# ==================== 文档管理API ====================
+@app.get("/api/config")
+async def get_config():
+    try:
+        config_path = ROOT / "config" / "config.json"
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        env_path = ROOT / "config" / ".env"
+        env_config = {}
+        if env_path.exists():
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        env_config[key.strip()] = value.strip()
+        
+        return ApiResponse(status="success", data={"config": config, "env": env_config})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.get("/api/config/templates")
+async def get_templates():
+    try:
+        config_path = ROOT / "config" / "config.json"
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        templates = config.get("chunk", {}).get("templates", {})
+        return ApiResponse(status="success", data=templates)
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.get("/api/config/chunk")
+async def get_chunk_config_api():
+    try:
+        config = get_chunk_config()
+        return ApiResponse(status="success", data=config)
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+# ============================================================
+#  文档管理 API
+# ============================================================
 
 @app.get("/api/documents")
-async def list_documents(category: Optional[str] = None):
-    """获取文档列表"""
-    db = get_db()
-    documents = db.list_documents(category=category)
-    return {"documents": documents}
+async def list_documents(source: str = "all"):
+    """获取文档列表（带状态）"""
+    try:
+        db = get_db()
+        
+        # 获取本地文件
+        local_docs = get_local_documents(source)
+        local_set = set(local_docs)
+        
+        # 获取向量库文档
+        vector_docs = []
+        try:
+            stored_sources = db.list_sources()
+            for src in stored_sources:
+                doc_info = db.get_document_info(src)
+                if doc_info:
+                    vector_docs.append(doc_info)
+        except:
+            pass
+        
+        vector_map = {d["source"]: d for d in vector_docs}
+        
+        result = []
+        for doc_path in local_docs:
+            doc_name = Path(doc_path).name
+            if doc_path in vector_map:
+                v = vector_map[doc_path]
+                result.append({
+                    "path": doc_path,
+                    "name": doc_name,
+                    "source_type": "local",
+                    "status": "imported",
+                    "chunks": v.get("chunks", 0),
+                    "content_hash": v.get("content_hash", ""),
+                })
+            else:
+                result.append({
+                    "path": doc_path,
+                    "name": doc_name,
+                    "source_type": "local",
+                    "status": "local",
+                    "chunks": 0,
+                    "content_hash": "",
+                })
+        
+        # 添加孤立记录
+        for doc in vector_docs:
+            if doc["source"] not in local_set:
+                result.append({
+                    "path": doc["source"],
+                    "name": doc.get("source_name", Path(doc["source"]).name),
+                    "source_type": "local",
+                    "status": "orphan",
+                    "chunks": doc.get("chunks", 0),
+                    "content_hash": doc.get("content_hash", ""),
+                })
+        
+        return ApiResponse(status="success", data=result)
+    except Exception as e:
+        logger.error(f"获取文档列表失败: {e}")
+        return ApiResponse(status="error", message=str(e))
 
+@app.post("/api/documents/upload")
+async def upload_documents(files: List[UploadFile] = File(...)):
+    """上传文件到 data/docs 目录"""
+    try:
+        docs_dir = get_docs_dir()
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        
+        uploaded = []
+        for file in files:
+            safe_name = os.path.basename(file.filename)
+            file_path = docs_dir / safe_name
+            content = await file.read()
+            with open(file_path, "wb") as f:
+                f.write(content)
+            uploaded.append(file.filename)
+            logger.info(f"上传文件: {file.filename}")
+        
+        return ApiResponse(status="success", data={"uploaded": uploaded, "count": len(uploaded)})
+    except Exception as e:
+        logger.error(f"上传失败: {e}")
+        return ApiResponse(status="error", message=str(e))
 
 @app.post("/api/documents/import")
-async def import_document(
-    file: UploadFile = File(...), 
-    category: str = "textbook",
-    use_multimodal: bool = True,
-    chunk_size: int = 200,
-    chunk_overlap: int = 30
-):
-    """上传文档到待审核目录（安全模式）"""
+async def import_documents(request: ImportRequest):
+    """导入文档到向量库"""
     try:
-        # 检查文件类型
-        allowed_extensions = ['.pdf', '.docx', '.txt', '.md', '.pptx']
-        file_ext = Path(file.filename).suffix.lower()
+        from core.document import read_file, SUPPORTED_EXTENSIONS
         
-        if file_ext not in allowed_extensions:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"不支持的文件格式: {file_ext}，支持: {', '.join(allowed_extensions)}"
-            )
+        db = get_db()
+        chunk_cfg = get_chunk_config()
         
-        # 保存到待审核目录
-        docs_dir = get_docs_dir()
-        pending_dir = docs_dir / "_pending"
-        pending_dir.mkdir(parents=True, exist_ok=True)
+        results = []
+        total_chunks = 0
         
-        # 生成唯一文件名（避免冲突）
-        import time
-        timestamp = int(time.time())
-        safe_filename = f"{timestamp}_{file.filename}"
-        file_path = pending_dir / safe_filename
-        
-        with open(file_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
-        
-        # 保存元数据
-        meta_path = file_path.with_suffix(".meta.json")
-        import json
-        meta = {
-            "original_filename": file.filename,
-            "category": category,
-            "use_multimodal": use_multimodal,
-            "chunk_size": chunk_size,
-            "chunk_overlap": chunk_overlap,
-            "upload_time": timestamp,
-            "file_size": len(content),
-            "status": "pending"
-        }
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
-        
-        return {
-            "status": "pending", 
-            "message": "文件已上传，等待管理员审核",
-            "filename": file.filename,
-            "pending_id": safe_filename
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/documents/pending")
-async def list_pending_documents():
-    """列出待审核的文档"""
-    try:
-        docs_dir = get_docs_dir()
-        pending_dir = docs_dir / "_pending"
-        
-        if not pending_dir.exists():
-            return {"status": "success", "files": [], "count": 0}
-        
-        import json
-        files = []
-        for meta_file in pending_dir.glob("*.meta.json"):
-            try:
-                with open(meta_file, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
-                meta["pending_id"] = meta_file.stem.replace(".meta", "")
-                files.append(meta)
-            except Exception:
+        for file_path in request.files:
+            full_path = Path(file_path)
+            if not full_path.exists():
+                results.append({"file": file_path, "status": "error", "message": "文件不存在"})
                 continue
+            
+            ext = full_path.suffix.lower()
+            if ext not in SUPPORTED_EXTENSIONS:
+                results.append({"file": file_path, "status": "error", "message": f"不支持的格式: {ext}"})
+                continue
+            
+            try:
+                text = read_file(str(full_path))
+                if not text or not text.strip():
+                    results.append({"file": file_path, "status": "error", "message": "文件内容为空"})
+                    continue
+                
+                doc_name = full_path.stem
+                text = f"[文件名: {doc_name}]\n{text}"
+                doc = {
+                    "page_content": text,
+                    "metadata": {
+                        "source": str(full_path),
+                        "filename": full_path.name,
+                    }
+                }
+                
+                doc_ids = db.add(doc, chunk_cfg, source_type="local_file")
+                count = len(doc_ids) if doc_ids else 0
+                total_chunks += count
+                results.append({"file": file_path, "status": "success", "chunks": count})
+                
+                await manager.broadcast({
+                    "type": "import_progress",
+                    "data": {"file": full_path.name, "chunks": count, "status": "success"}
+                })
+            except Exception as e:
+                results.append({"file": file_path, "status": "error", "message": str(e)})
         
-        # 按上传时间倒序
-        files.sort(key=lambda x: x.get("upload_time", 0), reverse=True)
-        
-        return {"status": "success", "files": files, "count": len(files)}
+        return ApiResponse(
+            status="success",
+            data={"results": results, "total_chunks": total_chunks}
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"导入失败: {e}")
+        return ApiResponse(status="error", message=str(e))
 
-
-class ApproveRequest(BaseModel):
-    """审核请求"""
-    pending_id: str
-    approved: bool
-
-
-@app.post("/api/documents/approve")
-async def approve_document(request: ApproveRequest):
-    """审核文档（批准或拒绝）"""
+@app.post("/api/documents/batch-import")
+async def batch_import_documents(request: ImportRequest):
+    """批量导入文档（带WebSocket进度）"""
     try:
-        docs_dir = get_docs_dir()
-        pending_dir = docs_dir / "_pending"
+        from core.document import read_file, SUPPORTED_EXTENSIONS
         
-        # 查找文件
-        file_path = pending_dir / request.pending_id
-        meta_path = file_path.with_suffix(".meta.json")
-        
-        if not file_path.exists() or not meta_path.exists():
-            raise HTTPException(status_code=404, detail="文件不存在")
-        
-        # 读取元数据
-        import json
-        with open(meta_path, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-        
-        if request.approved:
-            # 批准：移动到正式目录
-            category = meta.get("category", "textbook")
-            category_dir = docs_dir / category
-            category_dir.mkdir(parents=True, exist_ok=True)
-            
-            original_filename = meta.get("original_filename", file_path.name)
-            target_path = category_dir / original_filename
-            
-            # 如果目标已存在，添加时间戳
-            if target_path.exists():
-                import time
-                name = Path(original_filename).stem
-                ext = Path(original_filename).suffix
-                target_path = category_dir / f"{name}_{int(time.time())}{ext}"
-            
-            # 移动文件
-            import shutil
-            shutil.move(str(file_path), str(target_path))
-            
-            # 处理文档（添加到向量库）
-            from core.document import load_single_document
-            docs = load_single_document(str(target_path), use_multimodal=meta.get("use_multimodal", True))
-            
-            chunk_cfg = {
-                "chunk_size": meta.get("chunk_size", 200),
-                "overlap": meta.get("chunk_overlap", 30),
-                "separators": ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
-            }
-            
-            db = get_db()
-            source_path = str(target_path).replace("\\", "/")
-            for doc in docs:
-                doc["metadata"]["source"] = source_path
-                doc["metadata"]["category"] = category
-                db.add(doc, chunk_cfg=chunk_cfg)
-            
-            # 删除元数据文件
-            meta_path.unlink()
-            
-            return {
-                "status": "approved",
-                "message": f"文件已批准并添加到 {category} 分类",
-                "filename": original_filename,
-                "documents_count": len(docs)
-            }
-        else:
-            # 拒绝：删除文件
-            file_path.unlink()
-            meta_path.unlink()
-            
-            return {
-                "status": "rejected",
-                "message": "文件已拒绝并删除",
-                "filename": meta.get("original_filename", "")
-            }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/documents/import-all")
-async def import_all_documents(use_multimodal: bool = True):
-    """导入所有文档"""
-    try:
-        docs_dir = get_docs_dir()
         db = get_db()
+        chunk_cfg = get_chunk_config()
         
-        allowed_extensions = ['.pdf', '.docx', '.txt', '.md', '.pptx']
+        total = len(request.files)
         imported = 0
-        total_docs = 0
+        total_chunks = 0
         
-        for file_path in docs_dir.rglob("*"):
-            if file_path.is_file() and file_path.suffix in allowed_extensions:
-                try:
-                    docs = load_single_document(str(file_path), use_multimodal=use_multimodal)
-                    for doc in docs:
-                        doc["metadata"]["source"] = str(file_path)
-                        db.add(doc)
-                    imported += 1
-                    total_docs += len(docs)
-                    print(f"导入成功: {file_path} ({len(docs)}个文档)")
-                except Exception as e:
-                    print(f"导入失败 {file_path}: {e}")
+        for idx, file_path in enumerate(request.files, 1):
+            full_path = Path(file_path)
+            if not full_path.exists():
+                continue
+            
+            ext = full_path.suffix.lower()
+            if ext not in SUPPORTED_EXTENSIONS:
+                continue
+            
+            try:
+                text = read_file(str(full_path))
+                if not text or not text.strip():
+                    continue
+                
+                doc_name = full_path.stem
+                text = f"[文件名: {doc_name}]\n{text}"
+                doc = {
+                    "page_content": text,
+                    "metadata": {
+                        "source": str(full_path),
+                        "filename": full_path.name,
+                    }
+                }
+                
+                doc_ids = db.add(doc, chunk_cfg, source_type="local_file")
+                count = len(doc_ids) if doc_ids else 0
+                total_chunks += count
+                imported += 1
+                
+                await manager.broadcast({
+                    "type": "batch_progress",
+                    "data": {"op": "import", "idx": idx, "total": total, "name": full_path.name, "status": "success", "chunks": count}
+                })
+            except Exception as e:
+                logger.warning(f"导入失败 {file_path}: {e}")
         
-        return {
-            "status": "success", 
-            "imported": imported,
-            "total_documents": total_docs,
-            "multimodal": use_multimodal
+        await manager.broadcast({
+            "type": "batch_complete",
+            "data": {"op": "import", "imported": imported, "total_chunks": total_chunks}
+        })
+        
+        return ApiResponse(status="success", data={"imported": imported, "total_chunks": total_chunks})
+    except Exception as e:
+        logger.error(f"批量导入失败: {e}")
+        return ApiResponse(status="error", message=str(e))
+
+@app.delete("/api/documents/{file_path:path}")
+async def delete_document(file_path: str):
+    """删除文档向量记录"""
+    try:
+        db = get_db()
+        logger.info(f"删除文档: {file_path}")
+        db.delete(file_path)
+        logger.info(f"删除成功: {file_path}")
+        return ApiResponse(status="success", message=f"已删除: {file_path}")
+    except Exception as e:
+        logger.error(f"删除失败: {file_path}, 错误: {e}")
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/documents/batch-delete")
+async def batch_delete_documents(request: ImportRequest):
+    """批量删除文档"""
+    try:
+        db = get_db()
+        deleted = 0
+        
+        for file_path in request.files:
+            try:
+                db.delete(file_path)
+                deleted += 1
+            except Exception as e:
+                logger.warning(f"删除失败 {file_path}: {e}")
+        
+        return ApiResponse(status="success", data={"deleted": deleted})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/documents/delete-all")
+async def delete_all_documents(request: dict = {}):
+    """删除所有文档向量记录"""
+    try:
+        db = get_db()
+        sources = db.list_sources()
+        deleted = 0
+        
+        for source in sources:
+            try:
+                db.delete(source)
+                deleted += 1
+            except Exception as e:
+                logger.warning(f"删除失败 {source}: {e}")
+        
+        logger.info(f"完全删除完成: {deleted} 个文档")
+        return ApiResponse(status="success", data={"deleted": deleted})
+    except Exception as e:
+        logger.error(f"完全删除失败: {e}")
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/documents/update")
+async def update_document(request: dict):
+    """更新单个文档"""
+    try:
+        from core.document import read_file, SUPPORTED_EXTENSIONS
+        
+        file_path = request.get("file_path", "")
+        if not file_path:
+            return ApiResponse(status="error", message="未指定文件路径")
+        
+        full_path = Path(file_path)
+        if not full_path.exists():
+            return ApiResponse(status="error", message="文件不存在")
+        
+        ext = full_path.suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            return ApiResponse(status="error", message=f"不支持的格式: {ext}")
+        
+        text = read_file(str(full_path))
+        if not text or not text.strip():
+            return ApiResponse(status="error", message="文件内容为空")
+        
+        db = get_db()
+        chunk_cfg = get_chunk_config()
+        
+        doc_name = full_path.stem
+        text = f"[文件名: {doc_name}]\n{text}"
+        doc = {
+            "page_content": text,
+            "metadata": {
+                "source": str(full_path),
+                "filename": full_path.name,
+            }
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/documents/stats")
-async def document_stats():
-    """获取文档统计"""
-    db = get_db()
-    return db.get_stats()
-
-
-class DeleteRequest(BaseModel):
-    """删除请求"""
-    source: str
-
-
-@app.post("/api/documents/delete")
-async def delete_document(request: DeleteRequest):
-    """删除文档"""
-    try:
-        db = get_db()
-        # 标准化路径
-        source = request.source.replace("\\", "/")
-        db.delete(source)
-        return {"status": "success", "source": source}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/documents/content")
-async def get_document_content(source: str):
-    """获取文档内容"""
-    try:
-        # 读取文件内容
-        file_path = Path(source)
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="文件不存在")
         
-        content = read_file(str(file_path))
-        return {"status": "success", "source": source, "content": content}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/documents/download/{category}/{filename}")
-async def download_document(category: str, filename: str):
-    """下载文档文件"""
-    try:
-        docs_dir = get_docs_dir()
-        file_path = docs_dir / category / filename
+        doc_ids = db.update(doc, chunk_cfg, source_type="local_file")
+        count = len(doc_ids) if doc_ids else 0
         
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="文件不存在")
-        
-        return FileResponse(
-            path=str(file_path),
-            filename=filename,
-            media_type='application/octet-stream'
-        )
-    except HTTPException:
-        raise
+        logger.info(f"更新成功: {file_path}, {count} chunks")
+        return ApiResponse(status="success", data={"chunks": count})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/documents/list-files")
-async def list_files(category: str = None):
-    """列出所有文件（用于同步）"""
-    try:
-        docs_dir = get_docs_dir()
-        files = []
-        
-        allowed_extensions = ['.pdf', '.docx', '.txt', '.md', '.pptx']
-        
-        if category:
-            scan_dir = docs_dir / category
-            if scan_dir.exists():
-                for f in scan_dir.iterdir():
-                    if f.is_file() and f.suffix in allowed_extensions:
-                        files.append({
-                            "filename": f.name,
-                            "category": category,
-                            "size": f.stat().st_size,
-                            "modified": f.stat().st_mtime
-                        })
-        else:
-            for cat_dir in docs_dir.iterdir():
-                if cat_dir.is_dir():
-                    for f in cat_dir.iterdir():
-                        if f.is_file() and f.suffix in allowed_extensions:
-                            files.append({
-                                "filename": f.name,
-                                "category": cat_dir.name,
-                                "size": f.stat().st_size,
-                                "modified": f.stat().st_mtime
-                            })
-        
-        return {"status": "success", "files": files, "count": len(files)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==================== 教材目录API ====================
-
-# 学段名称映射（中文 -> 英文目录名）
-LEVEL_MAPPING = {
-    "初中": "junior",
-    "高中": "senior",
-    "junior": "junior",
-    "senior": "senior"
-}
-
-
-def get_level_dir(level: str) -> Path:
-    """获取学段目录"""
-    catalog_dir = get_catalog_dir()
-    # 将中文转换为英文目录名
-    level_key = LEVEL_MAPPING.get(level, level.lower())
-    return catalog_dir / level_key
-
-
-@app.get("/api/catalog/levels")
-async def get_levels():
-    """获取学段列表"""
-    return {"levels": ["初中", "高中"]}
-
-
-@app.get("/api/catalog/grades")
-async def get_grades(level: str):
-    """获取年级列表"""
-    level_dir = get_level_dir(level)
-    
-    if not level_dir.exists():
-        return {"grades": []}
-    
-    grades = []
-    for json_file in level_dir.glob("*.json"):
-        with open(json_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            for grade in data.get("年级", []):
-                grades.append(grade["name"])
-    
-    return {"grades": grades}
-
-
-@app.get("/api/catalog/chapters")
-async def get_chapters(level: str, grade: str, semester: str):
-    """获取章节列表"""
-    level_dir = get_level_dir(level)
-    
-    if not level_dir.exists():
-        return {"chapters": []}
-    
-    for json_file in level_dir.glob("*.json"):
-        with open(json_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            for g in data.get("年级", []):
-                if g["name"] == grade:
-                    for s in g.get("学期", []):
-                        if s["name"] == semester:
-                            return {"chapters": s.get("章节", [])}
-    
-    return {"chapters": []}
-
-
-# ==================== 内容生成API ====================
-
-@app.post("/api/generate/speech-draft")
-async def generate_speech_draft(request: GenerateRequest):
-    """生成说课稿"""
-    try:
-        generator = get_generator()
-        result = generator.generate_speech_draft(
-            topic=request.topic,
-            textbook_version=request.textbook_version,
-            grade_level=request.grade_level,
-            chapter=request.chapter,
-            class_hours=request.class_hours
-        )
-        return {"status": "success", "content": result["content"], "sources": result["sources"]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/generate/lecture-draft")
-async def generate_lecture_draft(request: GenerateRequest):
-    """生成讲课稿"""
-    try:
-        generator = get_generator()
-        result = generator.generate_lecture_draft(
-            topic=request.topic,
-            textbook_version=request.textbook_version,
-            grade_level=request.grade_level,
-            chapter=request.chapter,
-            class_hours=request.class_hours
-        )
-        return {"status": "success", "content": result["content"], "sources": result["sources"]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/generate/lesson-plan")
-async def generate_lesson_plan(request: GenerateRequest):
-    """生成教案"""
-    try:
-        generator = get_generator()
-        result = generator.generate_lesson_plan(
-            topic=request.topic,
-            textbook_version=request.textbook_version,
-            grade_level=request.grade_level,
-            chapter=request.chapter,
-            class_hours=request.class_hours,
-            students=request.students
-        )
-        return {"status": "success", "content": result["content"], "sources": result["sources"]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/generate/study-plan")
-async def generate_study_plan(request: GenerateRequest):
-    """生成学案"""
-    try:
-        generator = get_generator()
-        result = generator.generate_study_plan(
-            topic=request.topic,
-            textbook_version=request.textbook_version,
-            grade_level=request.grade_level,
-            chapter=request.chapter,
-            class_hours=request.class_hours
-        )
-        return {"status": "success", "content": result["content"], "sources": result["sources"]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==================== 搜索API ====================
-
-@app.post("/api/search")
-async def search_documents(request: SearchRequest):
-    """搜索文档"""
-    try:
-        db = get_db()
-        results = db.search(
-            query=request.query,
-            n_results=request.n_results,
-            category=request.category
-        )
-        return {"results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==================== 问答API ====================
-
-@app.post("/api/qa")
-async def question_answer(request: QARequest):
-    """智能问答"""
-    try:
-        generator = get_generator()
-        result = generator.answer_question(request.question)
-        return {"status": "success", "answer": result["answer"], "sources": result["sources"]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==================== 同步和重建API ====================
+        logger.error(f"更新失败: {e}")
+        return ApiResponse(status="error", message=str(e))
 
 @app.post("/api/documents/sync")
-async def sync_documents(category: str = None):
-    """同步文档（增量同步）"""
+async def sync_documents(request: SyncRequest = SyncRequest()):
+    """增量同步文档"""
     try:
-        db = get_db()
-        docs_dir = get_docs_dir()
-        
-        # 加载所有本地文档
         from core.document import load_all_documents
-        documents = load_all_documents(docs_dir, category=category)
         
-        # 执行同步
-        stats = db.sync(documents)
+        db = get_db()
+        chunk_cfg = get_chunk_config()
         
-        return {
-            "status": "success",
-            "stats": stats
-        }
+        # 加载本地文档
+        docs_dir = get_docs_dir()
+        if not docs_dir.exists():
+            return ApiResponse(status="error", message="没有找到数据目录")
+        
+        logger.info(f"开始同步文档...")
+        documents = load_all_documents(docs_dir)
+        if not documents:
+            return ApiResponse(status="error", message="没有本地文档")
+        
+        logger.info(f"共加载 {len(documents)} 份文档")
+        
+        # 创建进度队列
+        progress_queue = asyncio.Queue()
+        loop = asyncio.get_event_loop()
+        
+        # 进度回调
+        def on_progress(op, idx, total, name, count):
+            try:
+                loop.call_soon_threadsafe(
+                    progress_queue.put_nowait,
+                    {"op": op, "idx": idx, "total": total, "name": name, "count": count}
+                )
+            except Exception:
+                pass
+        
+        # 异步进度推送协程
+        async def push_progress():
+            while True:
+                try:
+                    msg = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
+                    if msg.get("done"):
+                        break
+                    await manager.broadcast({"type": "sync_progress", "data": msg})
+                except asyncio.TimeoutError:
+                    continue
+                except Exception:
+                    break
+        
+        push_task = asyncio.create_task(push_progress())
+        
+        # 在线程池中执行同步
+        stats = await loop.run_in_executor(
+            executor,
+            lambda: db.sync(documents, chunk_cfg, on_progress=on_progress)
+        )
+        
+        # 通知进度推送结束
+        progress_queue.put_nowait({"done": True})
+        await push_task
+        
+        logger.info(f"同步完成: {stats}")
+        
+        await manager.broadcast({"type": "sync_complete", "data": stats})
+        
+        return ApiResponse(status="success", data=stats)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        logger.error(f"同步失败: {e}")
+        return ApiResponse(status="error", message=str(e))
 
 @app.post("/api/documents/rebuild")
-async def rebuild_documents(category: str = None):
-    """重建向量库（全量重建）"""
+async def rebuild_documents(request: SyncRequest = SyncRequest()):
+    """全量重建向量库"""
     try:
-        db = get_db()
-        docs_dir = get_docs_dir()
-        
-        # 加载所有本地文档
         from core.document import load_all_documents
-        documents = load_all_documents(docs_dir, category=category)
         
-        # 执行重建
-        total = db.rebuild(documents)
-        
-        return {
-            "status": "success",
-            "total_chunks": total
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/documents/orphans")
-async def check_orphan_records():
-    """检查孤立记录"""
-    try:
         db = get_db()
+        chunk_cfg = get_chunk_config()
+        
+        # 加载本地文档
         docs_dir = get_docs_dir()
+        if not docs_dir.exists():
+            return ApiResponse(status="error", message="没有找到数据目录")
         
-        orphans = db.check_orphan_records([str(docs_dir)])
+        logger.info("开始重建向量库...")
+        documents = load_all_documents(docs_dir)
+        if not documents:
+            return ApiResponse(status="error", message="没有本地文档")
         
-        return {
-            "status": "success",
-            "orphans": orphans,
-            "count": len(orphans)
-        }
+        logger.info(f"共加载 {len(documents)} 份文档")
+        
+        # 创建进度队列
+        progress_queue = asyncio.Queue()
+        loop = asyncio.get_event_loop()
+        
+        def on_progress(op, idx, total, name, count):
+            try:
+                loop.call_soon_threadsafe(
+                    progress_queue.put_nowait,
+                    {"op": op, "idx": idx, "total": total, "name": name, "count": count}
+                )
+            except Exception:
+                pass
+        
+        async def push_progress():
+            while True:
+                try:
+                    msg = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
+                    if msg.get("done"):
+                        break
+                    await manager.broadcast({"type": "rebuild_progress", "data": msg})
+                except asyncio.TimeoutError:
+                    continue
+                except Exception:
+                    break
+        
+        push_task = asyncio.create_task(push_progress())
+        
+        # 在线程池中执行重建
+        count = await loop.run_in_executor(
+            executor,
+            lambda: db.rebuild(documents, chunk_cfg, on_progress=on_progress)
+        )
+        
+        progress_queue.put_nowait({"done": True})
+        await push_task
+        
+        logger.info(f"重建完成: {count} chunks")
+        
+        await manager.broadcast({
+            "type": "rebuild_complete",
+            "data": {"chunks": count, "documents": len(documents)}
+        })
+        
+        return ApiResponse(status="success", data={"chunks": count, "documents": len(documents)})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        logger.error(f"重建失败: {e}")
+        return ApiResponse(status="error", message=str(e))
 
 @app.post("/api/documents/clean-orphans")
 async def clean_orphan_records():
@@ -693,45 +698,235 @@ async def clean_orphan_records():
         
         count = db.clean_orphan_records([str(docs_dir)])
         
-        return {
-            "status": "success",
-            "cleaned": count
-        }
+        return ApiResponse(status="success", data={"cleaned": count})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return ApiResponse(status="error", message=str(e))
 
+@app.get("/api/documents/orphans")
+async def check_orphan_records():
+    """检查孤立记录"""
+    try:
+        db = get_db()
+        docs_dir = get_docs_dir()
+        
+        orphans = db.check_orphan_records([str(docs_dir)])
+        
+        return ApiResponse(status="success", data={"orphans": orphans, "count": len(orphans)})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
 
-# ==================== 静态文件服务 ====================
+@app.get("/api/documents/stats")
+async def get_document_stats():
+    """获取文档统计"""
+    try:
+        db = get_db()
+        stats = db.get_stats()
+        return ApiResponse(status="success", data=stats)
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
 
-# 挂载前端静态文件
-frontend_dir = Path(__file__).parent.parent / "frontend" / "dist"
+@app.get("/api/documents/list-files")
+async def list_files(category: str = None):
+    """列出所有文件（用于同步）"""
+    try:
+        docs_dir = get_docs_dir()
+        files = []
+        
+        from core.document import SUPPORTED_EXTENSIONS
+        
+        if category:
+            scan_dir = docs_dir / category
+            if scan_dir.exists():
+                for f in scan_dir.iterdir():
+                    if f.is_file() and f.suffix in SUPPORTED_EXTENSIONS:
+                        files.append({
+                            "filename": f.name,
+                            "category": category,
+                            "size": f.stat().st_size,
+                            "modified": f.stat().st_mtime
+                        })
+        else:
+            for cat_dir in docs_dir.iterdir():
+                if cat_dir.is_dir():
+                    for f in cat_dir.iterdir():
+                        if f.is_file() and f.suffix in SUPPORTED_EXTENSIONS:
+                            files.append({
+                                "filename": f.name,
+                                "category": cat_dir.name,
+                                "size": f.stat().st_size,
+                                "modified": f.stat().st_mtime
+                            })
+        
+        return ApiResponse(status="success", data={"files": files, "count": len(files)})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+# ============================================================
+#  教材目录 API
+# ============================================================
+
+@app.get("/api/catalog/levels")
+async def get_levels():
+    return ApiResponse(status="success", data=["初中", "高中"])
+
+@app.get("/api/catalog/grades")
+async def get_grades(level: str):
+    try:
+        catalog_dir = get_catalog_dir()
+        level_dir = catalog_dir / ("junior" if level == "初中" else "senior")
+        
+        if not level_dir.exists():
+            return ApiResponse(status="success", data=[])
+        
+        grades = []
+        for f in level_dir.iterdir():
+            if f.suffix == '.json':
+                grades.append(f.stem)
+        
+        return ApiResponse(status="success", data=grades)
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.get("/api/catalog/chapters")
+async def get_chapters(level: str, grade: str = None, semester: str = None):
+    try:
+        catalog_dir = get_catalog_dir()
+        level_dir = catalog_dir / ("junior" if level == "初中" else "senior")
+        
+        if not level_dir.exists():
+            return ApiResponse(status="success", data=[])
+        
+        # 读取目录文件
+        catalog_file = level_dir / "pep.json"
+        if not catalog_file.exists():
+            return ApiResponse(status="success", data=[])
+        
+        with open(catalog_file, 'r', encoding='utf-8') as f:
+            catalog = json.load(f)
+        
+        # 根据参数过滤
+        chapters = catalog.get("chapters", [])
+        
+        return ApiResponse(status="success", data=chapters)
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+# ============================================================
+#  内容生成 API
+# ============================================================
+
+@app.post("/api/generate/speech-draft")
+async def generate_speech_draft(request: GenerateRequest):
+    try:
+        generator = get_generator()
+        result = generator.generate_speech_draft(
+            topic=request.topic,
+            textbook_version=request.textbook_version,
+            grade_level=request.grade_level,
+            chapter=request.chapter,
+            class_hours=request.class_hours
+        )
+        return ApiResponse(status="success", data={"content": result})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/generate/lecture-draft")
+async def generate_lecture_draft(request: GenerateRequest):
+    try:
+        generator = get_generator()
+        result = generator.generate_lecture_draft(
+            topic=request.topic,
+            textbook_version=request.textbook_version,
+            grade_level=request.grade_level,
+            chapter=request.chapter,
+            class_hours=request.class_hours
+        )
+        return ApiResponse(status="success", data={"content": result})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/generate/lesson-plan")
+async def generate_lesson_plan(request: GenerateRequest):
+    try:
+        generator = get_generator()
+        result = generator.generate_lesson_plan(
+            topic=request.topic,
+            textbook_version=request.textbook_version,
+            grade_level=request.grade_level,
+            chapter=request.chapter,
+            class_hours=request.class_hours,
+            students=request.students
+        )
+        return ApiResponse(status="success", data={"content": result})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/generate/study-plan")
+async def generate_study_plan(request: GenerateRequest):
+    try:
+        generator = get_generator()
+        result = generator.generate_study_plan(
+            topic=request.topic,
+            textbook_version=request.textbook_version,
+            grade_level=request.grade_level,
+            chapter=request.chapter,
+            class_hours=request.class_hours
+        )
+        return ApiResponse(status="success", data={"content": result})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+# ============================================================
+#  搜索和问答 API
+# ============================================================
+
+@app.post("/api/search")
+async def search_documents(request: SearchRequest):
+    try:
+        db = get_db()
+        results = db.search(request.query, n_results=request.n_results, category=request.category)
+        return ApiResponse(status="success", data={"results": results})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/qa")
+async def question_answer(request: QARequest):
+    try:
+        generator = get_generator()
+        result = generator.answer_question(request.question)
+        return ApiResponse(status="success", data={"answer": result["answer"], "sources": result["sources"]})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+# ============================================================
+#  静态文件服务
+# ============================================================
+
+frontend_dir = ROOT / "frontend" / "dist"
 if frontend_dir.exists():
     app.mount("/assets", StaticFiles(directory=str(frontend_dir / "assets")), name="assets")
-
 
 @app.get("/{full_path:path}")
 async def serve_frontend(full_path: str):
     """服务前端页面"""
-    frontend_dir = Path(__file__).parent.parent / "frontend" / "dist"
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404)
     
-    # 尝试返回静态文件
     file_path = frontend_dir / full_path
     if file_path.exists() and file_path.is_file():
         return FileResponse(str(file_path))
     
-    # 返回index.html（SPA路由）
     index_path = frontend_dir / "index.html"
     if index_path.exists():
         return FileResponse(str(index_path))
     
-    return {"message": "GeoTeach AI Agent API"}
+    return {"message": "GeoTeach RAG API"}
 
-
-# ==================== 启动入口 ====================
+# ============================================================
+#  启动入口
+# ============================================================
 
 if __name__ == "__main__":
-    import uvicorn
-    
     config = get_web_config()
     uvicorn.run(
         "servers.web:app",

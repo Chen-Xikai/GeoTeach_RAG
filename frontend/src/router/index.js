@@ -7,24 +7,24 @@ const routes = [
     component: () => import('../views/Home.vue')
   },
   {
-    path: '/library',
-    name: 'Library',
-    component: () => import('../views/Library.vue')
+    path: '/documents',
+    name: 'Documents',
+    component: () => import('../views/Documents.vue')
   },
   {
-    path: '/generator',
-    name: 'Generator',
-    component: () => import('../views/Generator.vue')
+    path: '/search',
+    name: 'Search',
+    component: () => import('../views/Search.vue')
   },
   {
-    path: '/qa',
-    name: 'QA',
-    component: () => import('../views/QA.vue')
+    path: '/config',
+    name: 'Config',
+    component: () => import('../views/Config.vue')
   },
   {
-    path: '/settings',
-    name: 'Settings',
-    component: () => import('../views/Settings.vue')
+    path: '/services',
+    name: 'Services',
+    component: () => import('../views/Services.vue')
   }
 ]
 

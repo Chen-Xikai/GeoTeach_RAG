@@ -219,6 +219,37 @@ class DocumentDatabase:
         except Exception:
             return set()
     
+    def get_document_info(self, source: str) -> Optional[dict]:
+        """获取文档信息"""
+        try:
+            results = self.client.query(
+                collection_name=self.collection_name,
+                filter=f'source == "{source}"',
+                output_fields=["source", "category", "content_hash", "content"],
+                limit=1
+            )
+            if results:
+                result = results[0]
+                # 统计chunks数量
+                count_results = self.client.query(
+                    collection_name=self.collection_name,
+                    filter=f'source == "{source}"',
+                    output_fields=["id"],
+                    limit=1000
+                )
+                chunks = len(count_results) if count_results else 0
+                
+                return {
+                    "source": result.get("source", ""),
+                    "source_name": Path(result.get("source", "")).name,
+                    "category": result.get("category", ""),
+                    "content_hash": result.get("content_hash", ""),
+                    "chunks": chunks,
+                }
+            return None
+        except Exception:
+            return None
+    
     def search(self, query: str, n_results: int = 5, category: str = None) -> List[dict]:
         """搜索文档（带缓存和索引优化）"""
         retrieval_config = get_retrieval_config()

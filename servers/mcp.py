@@ -9,21 +9,19 @@ import os
 import sys
 import time
 import logging
+import requests
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config.settings import get_collection_name, get_retrieval_config
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 # 配置
-COLLECTION_NAME = get_collection_name()
-RETRIEVAL_CONFIG = get_retrieval_config()
-RETRIEVAL_K = RETRIEVAL_CONFIG["k"]
+WEB_API_URL = "http://127.0.0.1:9767"
 
 # 日志
 LOG_DIR = ROOT / "runtime" / "logs"
@@ -44,46 +42,27 @@ logger = logging.getLogger("GeoTeach-RAG-MCP")
 
 app = FastAPI(title="GeoTeach RAG MCP Server", version="1.0.0")
 
-# 全局实例（启动时初始化）
-_db = None
-_env_mtime = 0.0
-_env_file = ROOT / "config" / ".env"
-
-
-def _init_services():
-    """初始化所有服务"""
-    global _db, _env_mtime
-    from core.database import DocumentDatabase
-
-    _db = DocumentDatabase()
-    _env_mtime = _env_file.stat().st_mtime if _env_file.exists() else 0.0
-    logger.info(f"数据库初始化完成，集合: {COLLECTION_NAME}")
-
-
-def _check_config_reload():
-    """检查 .env 是否变化，如果变了就重新加载"""
-    global _db, _env_mtime
-    if not _env_file.exists():
-        return
-    current_mtime = _env_file.stat().st_mtime
-    if current_mtime != _env_mtime:
-        logger.info("检测到 .env 变化，重新加载配置...")
-        from dotenv import load_dotenv
-        load_dotenv(_env_file, override=True)
-        from core.database import DocumentDatabase
-        _db = DocumentDatabase()
-        _env_mtime = current_mtime
-        logger.info("配置重新加载完成")
-
 
 def search_sync(query: str) -> str:
-    """搜索知识库（同步版本）"""
+    """搜索知识库（通过Web API）"""
     t0 = time.time()
-    _check_config_reload()
 
     try:
-        # 搜索文档
-        results = _db.search(query, n_results=RETRIEVAL_K)
+        # 通过Web API搜索
+        r = requests.post(
+            f"{WEB_API_URL}/api/search",
+            json={"query": query, "n_results": 5},
+            timeout=30
+        )
+        
+        if r.status_code != 200:
+            return f"[错误] Web API返回状态码: {r.status_code}"
+        
+        data = r.json()
+        if data.get("status") != "success":
+            return f"[错误] {data.get('message', '未知错误')}"
+        
+        results = data.get("data", {}).get("results", [])
 
         if not results:
             return "知识库中未找到相关内容。"
@@ -103,6 +82,8 @@ def search_sync(query: str) -> str:
         logger.info(f"search: '{query[:50]}' => {len(results)} results, {elapsed:.2f}s")
         return "\n\n".join(parts)
 
+    except requests.exceptions.ConnectionError:
+        return "[错误] Web API未启动，请先启动Web服务 (python -m servers.web)"
     except Exception as e:
         logger.error(f"搜索失败: {e}")
         return f"[错误] 搜索过程出错: {e}"
@@ -115,23 +96,16 @@ def search_sync(query: str) -> str:
 @app.get("/health")
 async def health_check():
     """健康检查"""
-    _check_config_reload()
-
     try:
-        stats = _db.get_stats() if _db else {"count": 0, "chunk_count": 0, "status": "未初始化"}
-    except Exception:
-        stats = {"count": 0, "chunk_count": 0, "status": "错误"}
-
+        r = requests.get(f"{WEB_API_URL}/api/system/health", timeout=5)
+        web_ok = r.status_code == 200
+    except:
+        web_ok = False
+    
     return {
-        "status": "ok",
+        "status": "ok" if web_ok else "degraded",
         "version": "1.0.0",
-        "database": {
-            "type": "Milvus Lite",
-            "collection": COLLECTION_NAME,
-            "documents": stats.get("count", 0),
-            "chunks": stats.get("chunk_count", 0),
-            "status": stats.get("status", "未知"),
-        },
+        "web_api": "connected" if web_ok else "disconnected",
     }
 
 
@@ -220,16 +194,9 @@ async def mcp_endpoint(request: Request):
 
 def main():
     """启动 MCP 服务器"""
-    _init_services()
-
-    stats = _db.get_stats() if _db else {}
-
     logger.info("=" * 50)
     logger.info("GeoTeach RAG MCP Server V1.0.0 启动中...")
-    logger.info(f"数据库: Milvus Lite")
-    logger.info(f"集合: {COLLECTION_NAME}")
-    logger.info(f"文档数: {stats.get('count', 0)}")
-    logger.info(f"Chunk数: {stats.get('chunk_count', 0)}")
+    logger.info(f"Web API: {WEB_API_URL}")
     logger.info(f"监听: http://{os.getenv('MCP_SERVER_HOST', '127.0.0.1')}:{os.getenv('MCP_SERVER_PORT', '9766')}")
     logger.info("=" * 50)
 
