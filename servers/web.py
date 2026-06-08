@@ -296,12 +296,14 @@ async def list_documents(source: str = "all"):
         except Exception as e:
             logger.error(f"获取向量库文档失败: {e}")
         
-        # 构建向量库文档映射
+        # 构建向量库文档映射（统计每个文档的chunks数量）
         vector_map = {}
+        chunk_counts = {}
         for doc in vector_docs:
             src = doc.get("id", "") or doc.get("metadata", {}).get("source", "")
             if src:
                 vector_map[src] = doc
+                chunk_counts[src] = chunk_counts.get(src, 0) + 1
         
         result = []
         for doc_path in local_docs:
@@ -313,7 +315,7 @@ async def list_documents(source: str = "all"):
                     "name": doc_name,
                     "source_type": "local",
                     "status": "imported",
-                    "chunks": v.get("chunks", 0),
+                    "chunks": chunk_counts.get(doc_path, 0),
                     "content_hash": v.get("content_hash", ""),
                 })
             else:
