@@ -31,3 +31,6 @@ httpx>=0.24.0
 
 # Utilities
 rich>=13.0.0
+
+# Web Crawling
+beautifulsoup4>=4.12.0

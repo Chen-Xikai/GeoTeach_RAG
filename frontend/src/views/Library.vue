@@ -6,7 +6,7 @@
     </div>
 
     <el-row :gutter="16" style="margin-bottom: 24px;">
-      <el-col :span="8">
+      <el-col :span="6">
         <div class="stat-card">
           <div class="stat-icon" style="background: #ede9fe;">
             <el-icon :size="24" color="#7c3aed"><Document /></el-icon>
@@ -17,7 +17,7 @@
           </div>
         </div>
       </el-col>
-      <el-col :span="8">
+      <el-col :span="6">
         <div class="stat-card">
           <div class="stat-icon" style="background: #d1fae5;">
             <el-icon :size="24" color="#059669"><CircleCheck /></el-icon>
@@ -28,7 +28,7 @@
           </div>
         </div>
       </el-col>
-      <el-col :span="8">
+      <el-col :span="6">
         <div class="stat-card">
           <div class="stat-icon" style="background: #fef3c7;">
             <el-icon :size="24" color="#d97706"><Clock /></el-icon>
@@ -36,6 +36,17 @@
           <div class="stat-info">
             <h3>{{ stats.chunks || 0 }}</h3>
             <p>总切片数</p>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="6">
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #dbeafe;">
+            <el-icon :size="24" color="#2563eb"><FolderOpened /></el-icon>
+          </div>
+          <div class="stat-info">
+            <h3>{{ fileTypeStats }}</h3>
+            <p>文件类型分布</p>
           </div>
         </div>
       </el-col>
@@ -47,6 +58,12 @@
           <h3 style="margin-bottom: 16px;">📤 上传资料</h3>
           
           <el-form label-position="top">
+            <el-form-item label="文件类型">
+              <el-select v-model="selectedFileType" placeholder="选择文件类型" style="width: 100%;">
+                <el-option v-for="ft in FILE_TYPES" :key="ft.value" :label="ft.label" :value="ft.value" />
+              </el-select>
+            </el-form-item>
+            
             <el-form-item label="资料分类">
               <el-select v-model="selectedCategory" placeholder="选择分类" style="width: 100%;">
                 <el-option label="课本资料" value="textbook" />
@@ -94,6 +111,33 @@
             上传并入库
           </el-button>
         </div>
+
+        <div class="content-card" style="margin-top: 16px;">
+          <h3 style="margin-bottom: 16px;">🌐 网页爬取</h3>
+          
+          <el-form label-position="top">
+            <el-form-item label="网页 URL">
+              <el-input v-model="crawlUrl" placeholder="https://example.com/article" />
+            </el-form-item>
+            
+            <el-form-item label="文件类型">
+              <el-select v-model="crawlFileType" style="width: 100%;">
+                <el-option v-for="ft in FILE_TYPES" :key="ft.value" :label="ft.label" :value="ft.value" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          
+          <el-button 
+            type="success" 
+            style="width: 100%;"
+            :loading="crawling"
+            :disabled="!crawlUrl"
+            @click="crawlWeb"
+          >
+            <el-icon><Download /></el-icon>
+            爬取并入库
+          </el-button>
+        </div>
       </el-col>
 
       <el-col :span="18">
@@ -107,7 +151,7 @@
           </div>
           
           <el-table :data="documents" style="width: 100%;" v-loading="loading" row-key="path">
-            <el-table-column label="文件名" min-width="250">
+            <el-table-column label="文件名" min-width="200">
               <template #default="{ row }">
                 <div style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #409eff;" @click="viewDetail(row)">
                   <el-icon color="#059669"><Document /></el-icon>
@@ -115,6 +159,20 @@
                 </div>
               </template>
             </el-table-column>
+            
+            <el-table-column label="文件类型" width="150">
+              <template #default="{ row }">
+                <el-select 
+                  v-model="row.file_type" 
+                  size="small" 
+                  @change="handleFileTypeChange(row)"
+                  style="width: 130px;"
+                >
+                  <el-option v-for="ft in FILE_TYPES" :key="ft.value" :label="ft.label" :value="ft.value" />
+                </el-select>
+              </template>
+            </el-table-column>
+            
             <el-table-column label="状态" width="100">
               <template #default="{ row }">
                 <el-tag :type="row.status === 'imported' ? 'success' : row.status === 'orphan' ? 'warning' : 'info'" size="small">
@@ -122,11 +180,13 @@
                 </el-tag>
               </template>
             </el-table-column>
+            
             <el-table-column prop="chunks" label="切片" width="80" />
+            
             <el-table-column label="操作" width="220">
               <template #default="{ row }">
                 <el-button size="small" type="primary" @click="viewDetail(row)">
-                  查看详情
+                  详情
                 </el-button>
                 <el-button size="small" type="warning" @click="reimportDoc(row)">
                   重新切片
@@ -182,14 +242,33 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { documentsApi } from '@/api'
 
+// 文件类型选项
+const FILE_TYPES = [
+  { value: 'teaching_design', label: '教学设计' },
+  { value: 'study_guide', label: '导学案' },
+  { value: 'textbook', label: '课本' },
+  { value: 'curriculum', label: '课程标准' },
+  { value: 'reference_paper', label: '参考论文' },
+  { value: 'web_page', label: '网页资料' },
+  { value: 'other', label: '其他资料' }
+]
+
+const fileTypeMap = Object.fromEntries(FILE_TYPES.map(ft => [ft.value, ft.label]))
+
 const documents = ref([])
 const stats = ref({ count: 0, chunks: 0, status: '未初始化' })
 const selectedCategory = ref('textbook')
+const selectedFileType = ref('other')
 const chunkSize = ref(500)
 const chunkOverlap = ref(50)
 const fileList = ref([])
 const uploading = ref(false)
 const loading = ref(false)
+
+// 网页爬取
+const crawlUrl = ref('')
+const crawlFileType = ref('web_page')
+const crawling = ref(false)
 
 // 详情对话框
 const detailVisible = ref(false)
@@ -201,11 +280,21 @@ const importedCount = computed(() => {
   return documents.value.filter(d => d.status === 'imported').length
 })
 
+const fileTypeStats = computed(() => {
+  const counts = {}
+  documents.value.forEach(d => {
+    const ft = d.file_type || 'other'
+    counts[ft] = (counts[ft] || 0) + 1
+  })
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1])
+  if (entries.length === 0) return '无'
+  return entries.slice(0, 3).map(([k, v]) => `${fileTypeMap[k] || k}:${v}`).join(' ')
+})
+
 const refreshDocuments = async () => {
   loading.value = true
   try {
     const res = await documentsApi.list()
-    // 只显示已入库文档
     documents.value = (res.data || []).filter(d => d.status === 'imported')
     
     const statsRes = await documentsApi.stats()
@@ -235,7 +324,7 @@ const uploadFiles = async () => {
   uploading.value = true
   try {
     for (const file of fileList.value) {
-      await documentsApi.importFile(file.raw, selectedCategory.value, chunkSize.value, chunkOverlap.value)
+      await documentsApi.importFile(file.raw, selectedCategory.value, selectedFileType.value, chunkSize.value, chunkOverlap.value)
     }
     ElMessage.success(`上传成功：${fileList.value.length} 个文件已入库`)
     fileList.value = []
@@ -244,6 +333,34 @@ const uploadFiles = async () => {
     ElMessage.error('上传失败: ' + error.message)
   } finally {
     uploading.value = false
+  }
+}
+
+const crawlWeb = async () => {
+  if (!crawlUrl.value) {
+    ElMessage.warning('请输入网页URL')
+    return
+  }
+  
+  crawling.value = true
+  try {
+    const result = await documentsApi.crawlWeb(crawlUrl.value, crawlFileType.value)
+    ElMessage.success(`爬取成功：${result.data.title}，${result.data.chunks} 个切片`)
+    crawlUrl.value = ''
+    await refreshDocuments()
+  } catch (error) {
+    ElMessage.error('爬取失败: ' + error.message)
+  } finally {
+    crawling.value = false
+  }
+}
+
+const handleFileTypeChange = async (row) => {
+  try {
+    await documentsApi.updateFileType(row.path, row.file_type)
+    ElMessage.success('文件类型已更新')
+  } catch (error) {
+    ElMessage.error('更新失败: ' + error.message)
   }
 }
 
@@ -267,19 +384,6 @@ const viewDetail = async (doc) => {
   }
 }
 
-const deleteDoc = async (doc) => {
-  try {
-    await ElMessageBox.confirm(`确定要删除 "${doc.name}" 吗？文件将从磁盘移除。`, '确认删除', { type: 'warning' })
-    await documentsApi.delete(doc.path)
-    ElMessage.success('删除成功')
-    await refreshDocuments()
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败: ' + error.message)
-    }
-  }
-}
-
 const reimportDoc = async (doc) => {
   try {
     await ElMessageBox.confirm(`确定要重新切片 "${doc.name}" 吗？`, '确认重新切片', { type: 'info' })
@@ -289,6 +393,19 @@ const reimportDoc = async (doc) => {
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('重新切片失败: ' + error.message)
+    }
+  }
+}
+
+const deleteDoc = async (doc) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除 "${doc.name}" 吗？文件将从磁盘移除。`, '确认删除', { type: 'warning' })
+    await documentsApi.delete(doc.path)
+    ElMessage.success('删除成功')
+    await refreshDocuments()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败: ' + error.message)
     }
   }
 }

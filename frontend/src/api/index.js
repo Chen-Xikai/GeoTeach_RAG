@@ -90,14 +90,17 @@ export const documentsApi = {
   pending: () => api.get('/documents/pending'),
   approve: (pendingId) => api.post(`/documents/approve/${pendingId}`),
   reject: (pendingId) => api.post(`/documents/reject/${pendingId}`),
-  importFile: (file, category, chunkSize = 500, chunkOverlap = 50) => {
+  importFile: (file, category, fileType = 'other', chunkSize = 500, chunkOverlap = 50) => {
     const formData = new FormData()
     formData.append('file', file)
     if (category) formData.append('category', category)
+    formData.append('file_type', fileType)
     formData.append('chunk_size', chunkSize)
     formData.append('chunk_overlap', chunkOverlap)
     return api.post('/documents/import-file', formData, { timeout: 300000 })
-  }
+  },
+  updateFileType: (source, fileType) => api.put('/documents/update-file-type', { source, file_type: fileType }),
+  crawlWeb: (url, fileType = 'web_page', category = 'web_page') => api.post('/documents/crawl-web', { url, file_type: fileType, category })
 }
 
 // 搜索

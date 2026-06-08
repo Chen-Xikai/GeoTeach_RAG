@@ -1,12 +1,10 @@
 <template>
   <div class="home-page">
-    <!-- 页面标题 -->
     <div class="page-header">
       <h1>🌍 GeoTeach AI Agent - 地理教学助手</h1>
       <p>智能文档管理 · AI内容生成 · 知识问答</p>
     </div>
 
-    <!-- 统计卡片 -->
     <el-row :gutter="16" class="stats-row">
       <el-col :span="6">
         <div class="stat-card">
@@ -54,13 +52,12 @@
       </el-col>
     </el-row>
 
-    <!-- 快速操作 -->
     <el-row :gutter="16">
       <el-col :span="16">
         <div class="content-card">
           <h2 style="margin-bottom: 16px;">🚀 快速操作</h2>
           <el-row :gutter="16">
-            <el-col :span="12">
+            <el-col :span="8">
               <div class="action-card" @click="$router.push('/library')">
                 <el-icon :size="40" color="#7c3aed"><Collection /></el-icon>
                 <div>
@@ -69,7 +66,7 @@
                 </div>
               </div>
             </el-col>
-            <el-col :span="12">
+            <el-col :span="8">
               <div class="action-card" @click="$router.push('/generator')">
                 <el-icon :size="40" color="#2563eb"><Edit /></el-icon>
                 <div>
@@ -78,9 +75,7 @@
                 </div>
               </div>
             </el-col>
-          </el-row>
-          <el-row :gutter="16" style="margin-top: 16px;">
-            <el-col :span="12">
+            <el-col :span="8">
               <div class="action-card" @click="$router.push('/qa')">
                 <el-icon :size="40" color="#059669"><ChatDotRound /></el-icon>
                 <div>
@@ -89,9 +84,20 @@
                 </div>
               </div>
             </el-col>
-            <el-col :span="12">
+          </el-row>
+          <el-row :gutter="16" style="margin-top: 16px;">
+            <el-col :span="8">
+              <div class="action-card" @click="$router.push('/library')">
+                <el-icon :size="40" color="#d97706"><Download /></el-icon>
+                <div>
+                  <h3>网页爬取</h3>
+                  <p>抓取网页内容入库</p>
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="8">
               <div class="action-card" @click="$router.push('/settings')">
-                <el-icon :size="40" color="#d97706"><Setting /></el-icon>
+                <el-icon :size="40" color="#6b7280"><Setting /></el-icon>
                 <div>
                   <h3>系统设置</h3>
                   <p>配置和管理</p>
@@ -124,10 +130,10 @@
         <div class="content-card" style="margin-top: 16px;">
           <h2 style="margin-bottom: 16px;">ℹ️ 系统信息</h2>
           <el-descriptions :column="1" border>
-            <el-descriptions-item label="版本">v1.0.0</el-descriptions-item>
+            <el-descriptions-item label="版本">v1.4.0</el-descriptions-item>
             <el-descriptions-item label="Embedding">SiliconFlow BGE</el-descriptions-item>
             <el-descriptions-item label="Rerank">SiliconFlow BGE-reranker</el-descriptions-item>
-            <el-descriptions-item label="向量库">ChromaDB</el-descriptions-item>
+            <el-descriptions-item label="向量库">Milvus Lite</el-descriptions-item>
             <el-descriptions-item label="LLM">Qwen2.5-7B</el-descriptions-item>
           </el-descriptions>
         </div>

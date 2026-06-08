@@ -845,6 +845,7 @@ async def reject_pending_file(pending_id: str):
 async def import_single_file(
     file: UploadFile = File(...), 
     category: str = None,
+    file_type: str = "other",
     chunk_size: int = 500,
     chunk_overlap: int = 50
 ):
@@ -884,6 +885,7 @@ async def import_single_file(
             "metadata": {
                 "source": str(file_path),
                 "filename": file_path.name,
+                "file_type": file_type,
             }
         }
         
@@ -898,6 +900,91 @@ async def import_single_file(
         return ApiResponse(status="success", data={"file": file_path.name, "chunks": count})
     except Exception as e:
         logger.error(f"导入文件失败: {e}")
+        return ApiResponse(status="error", message=str(e))
+
+@app.put("/api/documents/update-file-type")
+async def update_file_type(data: dict):
+    """更新文档的文件类型"""
+    try:
+        source = data.get("source", "")
+        file_type = data.get("file_type", "other")
+        
+        if not source:
+            return ApiResponse(status="error", message="未指定文档路径")
+        
+        db = get_db()
+        success = db.update_file_type(source, file_type)
+        
+        if success:
+            return ApiResponse(status="success", message="文件类型已更新")
+        else:
+            return ApiResponse(status="error", message="更新失败")
+    except Exception as e:
+        logger.error(f"更新文件类型失败: {e}")
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/documents/crawl-web")
+async def crawl_web(data: dict):
+    """爬取网页内容并入库"""
+    try:
+        url = data.get("url", "")
+        file_type = data.get("file_type", "web_page")
+        category = data.get("category", "web_page")
+        
+        if not url:
+            return ApiResponse(status="error", message="请提供网页URL")
+        
+        # 爬取网页
+        from core.web_crawler import crawl_webpage, url_to_filename
+        
+        result = crawl_webpage(url)
+        if not result:
+            return ApiResponse(status="error", message="爬取网页失败或内容为空")
+        
+        # 保存到文件
+        from core.multimodal import read_file
+        
+        docs_dir = get_docs_dir()
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        
+        filename = url_to_filename(url)
+        file_path = docs_dir / filename
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(f"[网页标题: {result['title']}]\n[来源URL: {url}]\n\n{result['content']}")
+        
+        # 导入到向量库
+        db = get_db()
+        chunk_cfg = get_chunk_config()
+        
+        text = f"[文件名: {result['title']}]\n[来源URL: {url}]\n{result['content']}"
+        doc = {
+            "page_content": text,
+            "metadata": {
+                "source": str(file_path),
+                "filename": filename,
+                "file_type": file_type,
+                "url": url,
+                "title": result['title'],
+            }
+        }
+        
+        doc_ids = db.add(doc, chunk_cfg, source_type="web_crawl")
+        count = len(doc_ids) if doc_ids else 0
+        
+        await manager.broadcast({
+            "type": "import_progress",
+            "data": {"file": filename, "chunks": count, "status": "success"}
+        })
+        
+        return ApiResponse(status="success", data={
+            "file": filename,
+            "title": result['title'],
+            "chunks": count,
+            "url": url
+        })
+    except Exception as e:
+        logger.error(f"爬取网页失败: {e}")
         return ApiResponse(status="error", message=str(e))
 
 @app.put("/api/config")

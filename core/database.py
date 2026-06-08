@@ -169,7 +169,7 @@ class DocumentDatabase:
             return None
     
     def list_documents(self, category: str = None) -> List[dict]:
-        """获取唯一文档列表（按source去重，返回切片数）"""
+        """获取唯一文档列表（按source去重，返回切片数和文件类型）"""
         try:
             filter_expr = None
             if category:
@@ -179,7 +179,7 @@ class DocumentDatabase:
             results = self.client.query(
                 collection_name=self.collection_name,
                 filter=filter_expr,
-                output_fields=["source", "category"],
+                output_fields=["source", "category", "file_type"],
                 limit=10000
             )
             
@@ -189,15 +189,20 @@ class DocumentDatabase:
                 source = result.get("source", "")
                 if source:
                     if source not in doc_chunks:
-                        doc_chunks[source] = {"category": result.get("category", ""), "chunks": 0}
+                        doc_chunks[source] = {
+                            "category": result.get("category", ""),
+                            "file_type": result.get("file_type", "other"),
+                            "chunks": 0
+                        }
                     doc_chunks[source]["chunks"] += 1
             
-            # 返回去重结果 + chunks数量
+            # 返回去重结果 + chunks数量 + 文件类型
             documents = []
             for source, info in doc_chunks.items():
                 documents.append({
                     "id": source,
                     "metadata": {"source": source, "category": info["category"]},
+                    "file_type": info["file_type"],
                     "chunks": info["chunks"]
                 })
             return documents
@@ -279,6 +284,72 @@ class DocumentDatabase:
         except Exception as e:
             print(f"获取切片失败 {source}: {e}")
             return []
+    
+    def update_file_type(self, source: str, file_type: str) -> bool:
+        """更新文档的文件类型"""
+        try:
+            safe_source = source.replace("\\", "\\\\")
+            # 查询该文档的所有chunk
+            results = self.client.query(
+                collection_name=self.collection_name,
+                filter=f'source == "{safe_source}"',
+                output_fields=["id", "source", "category", "content_hash", "content"],
+                limit=10000
+            )
+            
+            if not results:
+                print(f"未找到文档: {source}")
+                return False
+            
+            # 获取第一个chunk的embedding用于更新
+            ids_to_update = [r["id"] for r in results]
+            
+            # Milvus Lite 不支持直接更新字段，需要删除后重新插入
+            # 但为了简单起见，我们只更新第一个chunk的file_type
+            # 实际上Milvus Lite的动态字段更新有限制
+            # 这里我们采用删除+重新插入的方式
+            
+            # 获取embedding
+            search_results = self.client.search(
+                collection_name=self.collection_name,
+                data=[self.embeddings.embed_query("test")],
+                limit=1,
+                filter=f'source == "{safe_source}"',
+                output_fields=["vector", "source", "category", "file_type", "content_hash", "content"]
+            )
+            
+            if search_results and search_results[0]:
+                # 删除旧记录
+                self.client.delete(
+                    collection_name=self.collection_name,
+                    ids=ids_to_update
+                )
+                
+                # 重新插入，更新file_type
+                new_data = []
+                for i, r in enumerate(results):
+                    new_data.append({
+                        "id": r["id"],
+                        "vector": search_results[0][0].get("entity", {}).get("vector", []),
+                        "source": r.get("source", ""),
+                        "category": r.get("category", ""),
+                        "file_type": file_type,
+                        "content_hash": r.get("content_hash", ""),
+                        "content": r.get("content", ""),
+                    })
+                
+                self.client.insert(
+                    collection_name=self.collection_name,
+                    data=new_data
+                )
+                
+                print(f"已更新文件类型: {source} -> {file_type}")
+                return True
+            
+            return False
+        except Exception as e:
+            print(f"更新文件类型失败: {e}")
+            return False
     
     def search(self, query: str, n_results: int = 5, category: str = None) -> List[dict]:
         """搜索文档（带缓存和索引优化）"""
@@ -369,6 +440,7 @@ class DocumentDatabase:
             metadata = chunk["metadata"].copy()
             source = metadata.pop("source", "unknown")
             category = metadata.pop("category", "")
+            file_type = metadata.pop("file_type", "other")
             
             doc_ids.append(doc_id)
             texts.append(chunk["page_content"])
@@ -376,6 +448,7 @@ class DocumentDatabase:
                 "doc_id": doc_id,
                 "source": source,
                 "category": category,
+                "file_type": file_type,
                 "content_hash": content_hash,
                 "content": chunk["page_content"],
             })
