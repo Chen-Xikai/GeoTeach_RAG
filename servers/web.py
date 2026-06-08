@@ -759,6 +759,166 @@ async def list_files(category: str = None):
     except Exception as e:
         return ApiResponse(status="error", message=str(e))
 
+@app.get("/api/documents/pending")
+async def list_pending_files():
+    """列出待审核文件"""
+    return ApiResponse(status="success", data={"files": [], "count": 0})
+
+@app.post("/api/documents/approve/{pending_id}")
+async def approve_pending_file(pending_id: str):
+    """批准待审核文件（无审核系统，直接返回成功）"""
+    return ApiResponse(status="success", message="文件已批准")
+
+@app.post("/api/documents/reject/{pending_id}")
+async def reject_pending_file(pending_id: str):
+    """拒绝待审核文件（无审核系统，直接返回成功）"""
+    return ApiResponse(status="success", message="文件已拒绝")
+
+@app.post("/api/documents/import-file")
+async def import_single_file(file: UploadFile = File(...), category: str = None):
+    """导入单个文件到向量库"""
+    try:
+        from core.multimodal import read_file, SUPPORTED_EXTENSIONS
+        
+        db = get_db()
+        chunk_cfg = get_chunk_config()
+        
+        ext = Path(file.filename).suffix.lower()
+        if ext not in SUPPORTED_EXTENSIONS:
+            return ApiResponse(status="error", message=f"不支持的格式: {ext}")
+        
+        docs_dir = get_docs_dir()
+        save_dir = docs_dir / (category or "default")
+        save_dir.mkdir(parents=True, exist_ok=True)
+        
+        safe_name = os.path.basename(file.filename)
+        file_path = save_dir / safe_name
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        text = read_file(str(file_path))
+        if not text or not text.strip():
+            return ApiResponse(status="error", message="文件内容为空")
+        
+        doc_name = Path(file_path).stem
+        text = f"[文件名: {doc_name}]\n{text}"
+        doc = {
+            "page_content": text,
+            "metadata": {
+                "source": str(file_path),
+                "filename": file_path.name,
+            }
+        }
+        
+        doc_ids = db.add(doc, chunk_cfg, source_type="local_file")
+        count = len(doc_ids) if doc_ids else 0
+        
+        await manager.broadcast({
+            "type": "import_progress",
+            "data": {"file": file_path.name, "chunks": count, "status": "success"}
+        })
+        
+        return ApiResponse(status="success", data={"file": file_path.name, "chunks": count})
+    except Exception as e:
+        logger.error(f"导入文件失败: {e}")
+        return ApiResponse(status="error", message=str(e))
+
+@app.put("/api/config")
+async def update_config(data: dict):
+    """更新配置"""
+    try:
+        config_path = ROOT / "config" / "config.json"
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        config.update(data)
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return ApiResponse(status="success", message="配置已更新")
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.put("/api/config/chunk")
+async def update_chunk_config(data: dict):
+    """更新切分配置"""
+    try:
+        config_path = ROOT / "config" / "config.json"
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        config.setdefault("chunk", {}).update(data)
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return ApiResponse(status="success", message="切分配置已更新")
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/services/start")
+async def start_service(data: dict):
+    """启动服务（占位端点）"""
+    return ApiResponse(status="success", message="服务启动请求已接收")
+
+@app.post("/api/services/stop")
+async def stop_service(data: dict):
+    """停止服务（占位端点）"""
+    return ApiResponse(status="success", message="服务停止请求已接收")
+
+@app.post("/api/documents/import-all")
+async def import_all_documents():
+    """导入所有本地文档到向量库"""
+    try:
+        from core.multimodal import read_file, SUPPORTED_EXTENSIONS
+        
+        db = get_db()
+        chunk_cfg = get_chunk_config()
+        
+        docs_dir = get_docs_dir()
+        if not docs_dir.exists():
+            return ApiResponse(status="error", message="没有找到数据目录")
+        
+        results = []
+        total_chunks = 0
+        
+        for ext in SUPPORTED_EXTENSIONS:
+            for file_path in docs_dir.rglob(f"*{ext}"):
+                if not file_path.is_file():
+                    continue
+                try:
+                    text = read_file(str(file_path))
+                    if not text or not text.strip():
+                        results.append({"file": str(file_path), "status": "error", "message": "文件内容为空"})
+                        continue
+                    
+                    doc_name = file_path.stem
+                    text = f"[文件名: {doc_name}]\n{text}"
+                    doc = {
+                        "page_content": text,
+                        "metadata": {
+                            "source": str(file_path),
+                            "filename": file_path.name,
+                        }
+                    }
+                    
+                    doc_ids = db.add(doc, chunk_cfg, source_type="local_file")
+                    count = len(doc_ids) if doc_ids else 0
+                    total_chunks += count
+                    results.append({"file": str(file_path), "status": "success", "chunks": count})
+                except Exception as e:
+                    results.append({"file": str(file_path), "status": "error", "message": str(e)})
+        
+        return ApiResponse(
+            status="success",
+            data={"results": results, "total_chunks": total_chunks}
+        )
+    except Exception as e:
+        logger.error(f"批量导入失败: {e}")
+        return ApiResponse(status="error", message=str(e))
+
 # ============================================================
 #  教材目录 API
 # ============================================================
