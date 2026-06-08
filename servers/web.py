@@ -900,6 +900,11 @@ async def question_answer(request: QARequest):
 #  静态文件服务
 # ============================================================
 
+import mimetypes
+
+mimetypes.add_type('application/javascript', '.js')
+mimetypes.add_type('application/json', '.json')
+
 frontend_dir = ROOT / "frontend" / "dist"
 if frontend_dir.exists():
     app.mount("/assets", StaticFiles(directory=str(frontend_dir / "assets")), name="assets")
@@ -912,7 +917,8 @@ async def serve_frontend(full_path: str):
     
     file_path = frontend_dir / full_path
     if file_path.exists() and file_path.is_file():
-        response = FileResponse(str(file_path))
+        media_type, _ = mimetypes.guess_type(str(file_path))
+        response = FileResponse(str(file_path), media_type=media_type)
         # 添加缓存控制头
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
@@ -921,7 +927,7 @@ async def serve_frontend(full_path: str):
     
     index_path = frontend_dir / "index.html"
     if index_path.exists():
-        response = FileResponse(str(index_path))
+        response = FileResponse(str(index_path), media_type="text/html")
         # 添加缓存控制头
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
