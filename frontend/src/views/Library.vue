@@ -113,10 +113,13 @@
               </template>
             </el-table-column>
             <el-table-column prop="chunks" label="切片" width="80" />
-            <el-table-column label="操作" width="180">
+            <el-table-column label="操作" width="220">
               <template #default="{ row }">
                 <el-button size="small" type="primary" @click="viewDetail(row)">
                   查看详情
+                </el-button>
+                <el-button size="small" type="warning" @click="reimportDoc(row)">
+                  重新切片
                 </el-button>
                 <el-button size="small" type="danger" @click="deleteDoc(row)">
                   删除
@@ -190,7 +193,8 @@ const refreshDocuments = async () => {
   loading.value = true
   try {
     const res = await documentsApi.list()
-    documents.value = res.data || []
+    // 只显示已入库文档
+    documents.value = (res.data || []).filter(d => d.status === 'imported')
     
     const statsRes = await documentsApi.stats()
     const s = statsRes.data || {}
@@ -253,13 +257,26 @@ const viewDetail = async (doc) => {
 
 const deleteDoc = async (doc) => {
   try {
-    await ElMessageBox.confirm(`确定要删除 "${doc.name}" 吗？`, '确认删除', { type: 'warning' })
+    await ElMessageBox.confirm(`确定要删除 "${doc.name}" 吗？文件将从磁盘移除。`, '确认删除', { type: 'warning' })
     await documentsApi.delete(doc.path)
     ElMessage.success('删除成功')
     await refreshDocuments()
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败: ' + error.message)
+    }
+  }
+}
+
+const reimportDoc = async (doc) => {
+  try {
+    await ElMessageBox.confirm(`确定要重新切片 "${doc.name}" 吗？`, '确认重新切片', { type: 'info' })
+    await documentsApi.importFiles([doc.path])
+    ElMessage.success('重新切片成功')
+    await refreshDocuments()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('重新切片失败: ' + error.message)
     }
   }
 }

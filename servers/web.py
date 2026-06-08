@@ -488,12 +488,20 @@ async def batch_import_documents(request: ImportRequest):
 
 @app.delete("/api/documents/{file_path:path}")
 async def delete_document(file_path: str):
-    """删除文档向量记录"""
+    """删除文档（向量记录 + 磁盘文件）"""
     try:
         db = get_db()
         logger.info(f"删除文档: {file_path}")
+        
+        # 1. 删除向量记录
         db.delete(file_path)
-        logger.info(f"删除成功: {file_path}")
+        
+        # 2. 删除磁盘文件
+        disk_path = Path(file_path)
+        if disk_path.exists() and disk_path.is_file():
+            disk_path.unlink()
+            logger.info(f"已删除文件: {file_path}")
+        
         return ApiResponse(status="success", message=f"已删除: {file_path}")
     except Exception as e:
         logger.error(f"删除失败: {file_path}, 错误: {e}")
