@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
-load_dotenv(ROOT / "config" / ".env")
+load_dotenv(ROOT / "config" / ".env", override=True)
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
@@ -49,9 +49,11 @@ logger = logging.getLogger("GeoTeach-Web")
 
 app = FastAPI(title=f"{PROJECT_NAME} Web API", version=VERSION)
 
+# CORS配置：支持生产环境和本地开发
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:9767", "http://127.0.0.1:9767", "http://127.0.0.1:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -167,6 +169,38 @@ def get_local_documents(source: str = "all") -> List[str]:
                         paths.append(str(f.resolve()))
     
     return paths
+
+# ============================================================
+#  认证 API
+# ============================================================
+
+@app.post("/api/auth/login")
+async def login(request: dict):
+    """用户登录验证"""
+    password = request.get("password", "")
+    access_pw = os.getenv("ACCESS_PASSWORD", "")
+    admin_pw = os.getenv("ADMIN_PASSWORD", "")
+    
+    # 如果没有设置任何密码，直接放行
+    if not access_pw and not admin_pw:
+        return ApiResponse(status="success", data={"role": "user", "message": "无需密码"})
+    
+    if admin_pw and password == admin_pw:
+        return ApiResponse(status="success", data={"role": "admin", "message": "管理员登录成功"})
+    elif access_pw and password == access_pw:
+        return ApiResponse(status="success", data={"role": "user", "message": "登录成功"})
+    else:
+        return ApiResponse(status="error", message="密码错误")
+
+@app.get("/api/auth/check")
+async def auth_check():
+    """检查是否需要密码"""
+    access_pw = os.getenv("ACCESS_PASSWORD", "")
+    admin_pw = os.getenv("ADMIN_PASSWORD", "")
+    return ApiResponse(status="success", data={
+        "need_password": bool(access_pw or admin_pw),
+        "has_admin": bool(admin_pw)
+    })
 
 # ============================================================
 #  WebSocket 端点

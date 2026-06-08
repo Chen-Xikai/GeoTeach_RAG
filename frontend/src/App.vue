@@ -1,6 +1,10 @@
 <template>
   <el-config-provider :locale="zhCn">
-    <div class="app-container">
+    <!-- 未登录时直接跳转登录页 -->
+    <router-view v-if="!isLoggedIn" />
+    
+    <!-- 已登录时显示主界面 -->
+    <div v-else class="app-container">
       <!-- 侧边栏 -->
       <aside class="sidebar">
         <div class="logo">
@@ -25,17 +29,21 @@
             <el-icon><ChatDotRound /></el-icon>
             <span>智能问答</span>
           </router-link>
-          <router-link to="/settings" class="nav-item" active-class="active">
+          <router-link v-if="isAdmin" to="/settings" class="nav-item" active-class="active">
             <el-icon><Setting /></el-icon>
-            <span>设置</span>
+            <span>系统设置</span>
           </router-link>
         </nav>
         
         <div class="sidebar-footer">
           <div class="system-status">
             <el-icon><CircleCheck /></el-icon>
-            <span>系统正常</span>
+            <span>{{ isAdmin ? '管理员' : '已登录' }}</span>
           </div>
+          <el-button text size="small" @click="handleLogout" style="color: rgba(255,255,255,0.6); margin-top: 8px;">
+            <el-icon><SwitchButton /></el-icon>
+            <span>退出</span>
+          </el-button>
         </div>
       </aside>
       
@@ -48,7 +56,28 @@
 </template>
 
 <script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
+
+const router = useRouter()
+const isLoggedIn = ref(localStorage.getItem('geoteach_auth') === 'true')
+const role = ref(localStorage.getItem('geoteach_role') || '')
+const isAdmin = computed(() => role.value === 'admin')
+
+const handleLogout = () => {
+  localStorage.removeItem('geoteach_auth')
+  localStorage.removeItem('geoteach_role')
+  isLoggedIn.value = false
+  router.push('/login')
+}
+
+onMounted(() => {
+  router.afterEach((to) => {
+    isLoggedIn.value = localStorage.getItem('geoteach_auth') === 'true'
+    role.value = localStorage.getItem('geoteach_role') || ''
+  })
+})
 </script>
 
 <style scoped>

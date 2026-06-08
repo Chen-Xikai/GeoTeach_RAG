@@ -31,6 +31,12 @@ export const systemApi = {
   status: () => api.get('/system/status')
 }
 
+// 认证
+export const authApi = {
+  login: (password) => api.post('/auth/login', { password }),
+  check: () => api.get('/auth/check')
+}
+
 // 配置
 export const configApi = {
   get: () => api.get('/config'),

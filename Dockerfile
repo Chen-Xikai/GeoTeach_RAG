@@ -16,10 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 创建数据目录
-RUN mkdir -p data/docs data/generated data/cache data/milvus.db runtime/logs runtime/state
+RUN mkdir -p data/docs data/generated data/cache data/images runtime/logs runtime/state
 
 # 暴露端口
-EXPOSE ${PORT:-9767}
+EXPOSE 9767
 
 # 启动命令
 CMD ["python", "-m", "servers.web"]
