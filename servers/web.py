@@ -1136,9 +1136,10 @@ async def serve_frontend(full_path: str):
 
 if __name__ == "__main__":
     config = get_web_config()
+    is_dev = os.getenv("WEB_HOST", "127.0.0.1") == "127.0.0.1"
     uvicorn.run(
         "servers.web:app",
         host=config["host"],
         port=config["port"],
-        reload=True
+        reload=is_dev
     )
