@@ -151,7 +151,7 @@ def check_port(host: str, port: int) -> bool:
         return False
 
 def get_local_documents(source: str = "all") -> List[str]:
-    """获取本地文档路径列表"""
+    """获取本地文档路径列表（返回绝对路径）"""
     from core.document import SUPPORTED_EXTENSIONS
     
     docs_dir = get_docs_dir()
@@ -162,7 +162,8 @@ def get_local_documents(source: str = "all") -> List[str]:
             for ext in SUPPORTED_EXTENSIONS:
                 for f in docs_dir.rglob(f"*{ext}"):
                     if f.is_file():
-                        paths.append(str(f))
+                        # 返回绝对路径，与向量库中存储的路径一致
+                        paths.append(str(f.resolve()))
     
     return paths
 
@@ -262,18 +263,20 @@ async def list_documents(source: str = "all"):
         local_docs = get_local_documents(source)
         local_set = set(local_docs)
         
-        # 获取向量库文档
+        # 获取向量库文档（通过查询所有文档）
         vector_docs = []
         try:
-            stored_sources = db.list_sources()
-            for src in stored_sources:
-                doc_info = db.get_document_info(src)
-                if doc_info:
-                    vector_docs.append(doc_info)
-        except:
-            pass
+            # 使用db的list_documents方法
+            vector_docs = db.list_documents()
+        except Exception as e:
+            logger.error(f"获取向量库文档失败: {e}")
         
-        vector_map = {d["source"]: d for d in vector_docs}
+        # 构建向量库文档映射
+        vector_map = {}
+        for doc in vector_docs:
+            src = doc.get("id", "") or doc.get("metadata", {}).get("source", "")
+            if src:
+                vector_map[src] = doc
         
         result = []
         for doc_path in local_docs:
@@ -300,14 +303,15 @@ async def list_documents(source: str = "all"):
         
         # 添加孤立记录
         for doc in vector_docs:
-            if doc["source"] not in local_set:
+            doc_source = doc.get("id", "") or doc.get("metadata", {}).get("source", "")
+            if doc_source and doc_source not in local_set:
                 result.append({
-                    "path": doc["source"],
-                    "name": doc.get("source_name", Path(doc["source"]).name),
+                    "path": doc_source,
+                    "name": Path(doc_source).name,
                     "source_type": "local",
                     "status": "orphan",
-                    "chunks": doc.get("chunks", 0),
-                    "content_hash": doc.get("content_hash", ""),
+                    "chunks": 0,
+                    "content_hash": "",
                 })
         
         return ApiResponse(status="success", data=result)

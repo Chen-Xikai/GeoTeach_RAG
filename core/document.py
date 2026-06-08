@@ -103,11 +103,21 @@ def _read_docx(filepath: str) -> str:
 def _read_text(filepath: str) -> str:
     """读取文本文件"""
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
             return f.read()
     except UnicodeDecodeError:
-        with open(filepath, 'r', encoding='gbk') as f:
-            return f.read()
+        try:
+            with open(filepath, 'r', encoding='gbk', errors='ignore') as f:
+                return f.read()
+        except:
+            with open(filepath, 'r', encoding='latin-1', errors='ignore') as f:
+                return f.read()
+
+
+def _clean_text(text: str) -> str:
+    """清理文本中的无效Unicode字符"""
+    # 移除surrogate字符
+    return text.encode('utf-8', errors='ignore').decode('utf-8', errors='ignore')
 
 
 def load_single_document(filepath: str, use_multimodal: bool = False) -> List[dict]:
@@ -129,6 +139,9 @@ def load_single_document(filepath: str, use_multimodal: bool = False) -> List[di
     
     # 读取文本内容
     content = read_file(filepath)
+    
+    # 清理无效Unicode字符
+    content = _clean_text(content)
     
     if not content.strip():
         return []

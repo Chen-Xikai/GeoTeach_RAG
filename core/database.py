@@ -247,7 +247,8 @@ class DocumentDatabase:
                     "chunks": chunks,
                 }
             return None
-        except Exception:
+        except Exception as e:
+            print(f"获取文档信息失败 {source}: {e}")
             return None
     
     def search(self, query: str, n_results: int = 5, category: str = None) -> List[dict]:
