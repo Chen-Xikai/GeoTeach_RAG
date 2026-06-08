@@ -281,6 +281,7 @@ const uploadFiles = async () => {
     ElMessage.success('上传成功，等待管理员审核')
     fileList.value = []
     await refreshPending()
+    await refreshDocuments()
   } catch (error) {
     ElMessage.error('上传失败: ' + error.message)
   } finally {

@@ -822,11 +822,10 @@ async def import_single_file(file: UploadFile = File(...), category: str = None)
             return ApiResponse(status="error", message=f"不支持的格式: {ext}")
         
         docs_dir = get_docs_dir()
-        save_dir = docs_dir / (category or "default")
-        save_dir.mkdir(parents=True, exist_ok=True)
+        docs_dir.mkdir(parents=True, exist_ok=True)
         
         safe_name = os.path.basename(file.filename)
-        file_path = save_dir / safe_name
+        file_path = docs_dir / safe_name
         content = await file.read()
         with open(file_path, "wb") as f:
             f.write(content)

@@ -9,6 +9,14 @@ const api = axios.create({
   }
 })
 
+// 请求拦截器：FormData 请求自动移除 Content-Type（让浏览器设置 boundary）
+api.interceptors.request.use(config => {
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type']
+  }
+  return config
+})
+
 api.interceptors.response.use(
   response => {
     const data = response.data
@@ -64,10 +72,7 @@ export const documentsApi = {
   upload: (files) => {
     const formData = new FormData()
     files.forEach(file => formData.append('files', file))
-    return api.post('/documents/upload', formData, {
-      timeout: 300000,
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    return api.post('/documents/upload', formData, { timeout: 300000 })
   },
   importFiles: (files) => api.post('/documents/import', { files }),
   batchImport: (files) => api.post('/documents/batch-import', { files }),
@@ -87,10 +92,7 @@ export const documentsApi = {
     const formData = new FormData()
     formData.append('file', file)
     if (category) formData.append('category', category)
-    return api.post('/documents/import-file', formData, {
-      timeout: 300000,
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    return api.post('/documents/import-file', formData, { timeout: 300000 })
   }
 }
 
