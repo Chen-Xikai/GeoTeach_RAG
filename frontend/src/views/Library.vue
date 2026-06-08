@@ -180,26 +180,22 @@
               </div>
               
               <el-table :data="documents" style="width: 100%;" v-loading="loading">
-                <el-table-column prop="title" label="标题" min-width="200">
+                <el-table-column label="文件名" min-width="200">
                   <template #default="{ row }">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                      <el-icon color="#059669"><Document /></el-icon>
-                      <span>{{ row.metadata?.title || row.metadata?.source?.split('/').pop() || '未知' }}</span>
+                      <el-icon :color="row.status === 'imported' ? '#059669' : row.status === 'orphan' ? '#d97706' : '#6b7280'"><Document /></el-icon>
+                      <span>{{ row.name }}</span>
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column prop="category" label="分类" width="120">
+                <el-table-column label="状态" width="120">
                   <template #default="{ row }">
-                    <el-tag size="small" type="success">{{ row.metadata?.category || '未分类' }}</el-tag>
+                    <el-tag :type="row.status === 'imported' ? 'success' : row.status === 'orphan' ? 'warning' : 'info'" size="small">
+                      {{ row.status === 'imported' ? '已入库' : row.status === 'orphan' ? '孤立' : '未导入' }}
+                    </el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column prop="source" label="来源" width="150">
-                  <template #default="{ row }">
-                    <span style="font-size: 12px; color: #6b7280;">
-                      {{ row.metadata?.学段 || '' }} {{ row.metadata?.年级 || '' }}
-                    </span>
-                  </template>
-                </el-table-column>
+                <el-table-column prop="chunks" label="Chunks" width="100" />
                 <el-table-column label="操作" width="100">
                   <template #default="{ row }">
                     <el-button size="small" type="danger" @click="deleteDocument(row)">
@@ -240,10 +236,9 @@ const refreshDocuments = async () => {
   loading.value = true
   try {
     const res = await documentsApi.list()
-    documents.value = res.data.documents || []
+    documents.value = res.data || []
     
-    const statsRes = await documentsApi.stats()
-    stats.value = statsRes.data || { count: 0, status: '未初始化' }
+    stats.value = { count: documents.value.length, status: '已加载' }
   } catch (error) {
     console.error('获取文档失败:', error)
   } finally {
