@@ -918,11 +918,21 @@ async def serve_frontend(full_path: str):
     
     file_path = frontend_dir / full_path
     if file_path.exists() and file_path.is_file():
-        return FileResponse(str(file_path))
+        response = FileResponse(str(file_path))
+        # 添加缓存控制头
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
     
     index_path = frontend_dir / "index.html"
     if index_path.exists():
-        return FileResponse(str(index_path))
+        response = FileResponse(str(index_path))
+        # 添加缓存控制头
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
     
     return {"message": "GeoTeach RAG API"}
 
