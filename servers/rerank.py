@@ -1,6 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
 """
-Ezy-RAG — 本地 Rerank HTTP 服务
+GeoTeach RAG — 本地 Rerank HTTP 服务
 加载 cross-encoder 模型，暴露 POST /rerank 接口
 
 用法:
@@ -42,7 +42,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("RerankServer")
 
-app = FastAPI(title="Ezy-RAG Rerank Server", version="1.0.0")
+app = FastAPI(title="GeoTeach RAG Rerank Server", version="1.0.0")
 
 _model = None
 
@@ -153,7 +153,7 @@ async def _do_rerank(req: RerankRequest):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ezy-RAG 本地 Rerank 服务")
+    parser = argparse.ArgumentParser(description="GeoTeach RAG 本地 Rerank 服务")
     parser.add_argument("--port", type=int, default=5001)
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--model-path", type=str, default=None, help="模型路径")

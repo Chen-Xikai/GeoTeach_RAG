@@ -1,6 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
 """
-Ezy-RAG — 本地 Embedding HTTP 服务
+GeoTeach RAG — 本地 Embedding HTTP 服务
 加载 sentence-transformers 模型，暴露 OpenAI 兼容的 API 端点
 
 用法:
@@ -57,7 +57,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("EmbeddingServer")
 
-app = FastAPI(title="Ezy-RAG Embedding Server", version="1.0.0")
+app = FastAPI(title="GeoTeach RAG Embedding Server", version="1.0.0")
 
 _model = None
 _model_name = None
@@ -206,7 +206,7 @@ async def create_embeddings(req: EmbeddingRequest):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Ezy-RAG 本地 Embedding 服务")
+    parser = argparse.ArgumentParser(description="GeoTeach RAG 本地 Embedding 服务")
     parser.add_argument("--port", type=int, default=1234)
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--model-path", type=str, default=None, help="模型路径")

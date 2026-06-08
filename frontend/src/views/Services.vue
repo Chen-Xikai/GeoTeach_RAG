@@ -90,10 +90,10 @@ const refreshStatus = async () => {
       
       services.value = [
         { 
-          key: 'chromadb', name: 'ChromaDB', mode: 'local',
-          host: data.chromadb?.host || '127.0.0.1',
-          port: data.chromadb?.port || 9898, 
-          online: data.chromadb?.online || false, _starting: false 
+          key: 'milvus', name: 'Milvus Lite', mode: 'local',
+          host: data.milvus?.host || '127.0.0.1',
+          port: data.milvus?.port || 19530, 
+          online: data.milvus?.online || true, _starting: false 
         },
       ]
       

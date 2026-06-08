@@ -266,129 +266,22 @@ class MultimodalProcessor:
         return documents
     
     def _extract_text(self, file_path: str, ext: str) -> List[dict]:
-        """提取文档文本内容"""
+        """提取文档文本内容（复用已有的 read_file 函数）"""
         try:
-            if ext == '.pptx':
-                return self._extract_from_pptx(file_path)
-            elif ext == '.pdf':
-                return self._extract_from_pdf(file_path)
-            elif ext == '.docx':
-                return self._extract_from_docx(file_path)
-            elif ext in ['.txt', '.md']:
-                return self._extract_from_text(file_path)
-            else:
+            if ext not in SUPPORTED_EXTENSIONS:
                 return []
-        except Exception as e:
-            print(f"文本提取失败: {e}")
-            return []
-    
-    def _extract_from_pptx(self, file_path: str) -> List[dict]:
-        """从PPT提取文本"""
-        try:
-            from pptx import Presentation
-        except ImportError:
-            return []
-        
-        prs = Presentation(file_path)
-        documents = []
-        
-        for slide_num, slide in enumerate(prs.slides, 1):
-            text_content = []
             
-            for shape in slide.shapes:
-                if hasattr(shape, "text") and shape.text.strip():
-                    text_content.append(shape.text)
-                
-                if shape.has_table:
-                    table = shape.table
-                    rows = []
-                    for row in table.rows:
-                        cells = [cell.text.strip() for cell in row.cells]
-                        rows.append(" | ".join(cells))
-                    text_content.append("\n".join(rows))
+            content = read_file(file_path)
+            if not content or not content.strip():
+                return []
             
-            if text_content:
-                content = "\n".join(text_content)
-                documents.append({
-                    "page_content": content,
-                    "metadata": {
-                        "source": file_path,
-                        "type": "text",
-                        "slide_number": slide_num,
-                        "total_slides": len(prs.slides)
-                    }
-                })
-        
-        return documents
-    
-    def _extract_from_pdf(self, file_path: str) -> List[dict]:
-        """从PDF提取文本"""
-        try:
-            from langchain_community.document_loaders import PyPDFLoader
-            loader = PyPDFLoader(file_path)
-            docs = loader.load()
-            
-            documents = []
-            for i, doc in enumerate(docs):
-                documents.append({
-                    "page_content": doc.page_content,
-                    "metadata": {
-                        "source": file_path,
-                        "type": "text",
-                        "page": i + 1
-                    }
-                })
-            return documents
-        except Exception as e:
-            print(f"PDF提取失败: {e}")
-            return []
-    
-    def _extract_from_docx(self, file_path: str) -> List[dict]:
-        """从DOCX提取文本"""
-        try:
-            from docx import Document
-            doc = Document(file_path)
-            
-            text_content = []
-            for para in doc.paragraphs:
-                if para.text.strip():
-                    text_content.append(para.text)
-            
-            for table in doc.tables:
-                rows = []
-                for row in table.rows:
-                    cells = [cell.text.strip() for cell in row.cells]
-                    rows.append(" | ".join(cells))
-                text_content.append("\n".join(rows))
-            
-            if text_content:
-                return [{
-                    "page_content": "\n".join(text_content),
-                    "metadata": {
-                        "source": file_path,
-                        "type": "text"
-                    }
-                }]
-            return []
-        except Exception as e:
-            print(f"DOCX提取失败: {e}")
-            return []
-    
-    def _extract_from_text(self, file_path: str) -> List[dict]:
-        """从文本文件提取内容"""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            if content.strip():
-                return [{
-                    "page_content": content,
-                    "metadata": {
-                        "source": file_path,
-                        "type": "text"
-                    }
-                }]
-            return []
+            return [{
+                "page_content": content,
+                "metadata": {
+                    "source": file_path,
+                    "type": "text"
+                }
+            }]
         except Exception as e:
             print(f"文本提取失败: {e}")
             return []

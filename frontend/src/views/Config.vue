@@ -93,13 +93,13 @@
         <div class="config-section">
           <h3>服务配置</h3>
           <el-form label-width="140px">
-            <el-form-item label="ChromaDB">
+            <el-form-item label="Milvus">
               <el-col :span="11">
-                <el-input v-model="config.chroma_host" placeholder="127.0.0.1" />
+                <el-input v-model="config.milvus_host" placeholder="127.0.0.1" />
               </el-col>
               <el-col :span="2" style="text-align: center;">:</el-col>
               <el-col :span="11">
-                <el-input-number v-model="config.chroma_port" :min="1" :max="65535" style="width: 100%;" />
+                <el-input-number v-model="config.milvus_port" :min="1" :max="65535" style="width: 100%;" />
               </el-col>
             </el-form-item>
             <el-form-item label="MCP">

@@ -1,5 +1,5 @@
 """
-GeoTeach AI Agent - 核心层
+GeoTeach RAG - 核心层
 """
 
 from .api import EmbeddingAPI, RerankAPI
@@ -12,7 +12,6 @@ from .multimodal import (
 from .generator import ContentGenerator
 from .image_extractor import ImageExtractor
 from .ocr import OCRProcessor, VisionProcessor
-from .multimodal import MultimodalProcessor, process_document_multimodal
 
 __all__ = [
     "EmbeddingAPI",
