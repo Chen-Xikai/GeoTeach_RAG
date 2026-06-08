@@ -1,14 +1,12 @@
 <template>
   <div class="library-page">
-    <!-- 页面标题 -->
     <div class="page-header">
       <h1>📚 资料库管理</h1>
-      <p>上传和管理教学资料（文件需审核后才能入库）</p>
+      <p>上传和管理教学资料</p>
     </div>
 
-    <!-- 统计信息 -->
     <el-row :gutter="16" style="margin-bottom: 24px;">
-      <el-col :span="6">
+      <el-col :span="8">
         <div class="stat-card">
           <div class="stat-icon" style="background: #ede9fe;">
             <el-icon :size="24" color="#7c3aed"><Document /></el-icon>
@@ -19,48 +17,35 @@
           </div>
         </div>
       </el-col>
-      <el-col :span="6">
-        <div class="stat-card">
-          <div class="stat-icon" style="background: #fef3c7;">
-            <el-icon :size="24" color="#d97706"><Clock /></el-icon>
-          </div>
-          <div class="stat-info">
-            <h3>{{ pendingFiles.length }}</h3>
-            <p>待审核</p>
-          </div>
-        </div>
-      </el-col>
-      <el-col :span="6">
-        <div class="stat-card">
-          <div class="stat-icon" style="background: #dbeafe;">
-            <el-icon :size="24" color="#2563eb"><FolderOpened /></el-icon>
-          </div>
-          <div class="stat-info">
-            <h3>{{ selectedCategory || '全部' }}</h3>
-            <p>当前分类</p>
-          </div>
-        </div>
-      </el-col>
-      <el-col :span="6">
+      <el-col :span="8">
         <div class="stat-card">
           <div class="stat-icon" style="background: #d1fae5;">
             <el-icon :size="24" color="#059669"><CircleCheck /></el-icon>
           </div>
           <div class="stat-info">
-            <h3>{{ stats.status || '未初始化' }}</h3>
-            <p>知识库状态</p>
+            <h3>{{ importedCount }}</h3>
+            <p>已入库</p>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="8">
+        <div class="stat-card">
+          <div class="stat-icon" style="background: #fef3c7;">
+            <el-icon :size="24" color="#d97706"><Clock /></el-icon>
+          </div>
+          <div class="stat-info">
+            <h3>{{ stats.chunks || 0 }}</h3>
+            <p>总切片数</p>
           </div>
         </div>
       </el-col>
     </el-row>
 
     <el-row :gutter="16">
-      <!-- 侧边栏：分类和上传 -->
       <el-col :span="6">
         <div class="content-card">
           <h3 style="margin-bottom: 16px;">📤 上传资料</h3>
           
-          <!-- 分类选择 -->
           <el-form label-position="top">
             <el-form-item label="资料分类">
               <el-select v-model="selectedCategory" placeholder="选择分类" style="width: 100%;">
@@ -76,7 +61,6 @@
             </el-form-item>
           </el-form>
           
-          <!-- 文件上传 -->
           <el-upload
             ref="uploadRef"
             :auto-upload="false"
@@ -88,7 +72,7 @@
           >
             <el-icon :size="48"><Upload /></el-icon>
             <div style="margin-top: 8px;">拖拽文件到此处</div>
-            <div style="font-size: 12px; color: #6b7280;">支持 PDF, DOCX, TXT, MD</div>
+            <div style="font-size: 12px; color: #6b7280;">支持 PDF, DOCX, TXT, MD, PPTX</div>
           </el-upload>
           
           <el-button 
@@ -97,140 +81,110 @@
             :loading="uploading"
             @click="uploadFiles"
           >
-            上传（待审核）
+            上传并入库
           </el-button>
-          
-          <el-alert 
-            type="warning" 
-            :closable="false"
-            style="margin-top: 12px;"
-            title="安全提示"
-            description="上传的文件需要管理员审核后才能入库，防止恶意文件。"
-            show-icon
-          />
         </div>
       </el-col>
 
-      <!-- 主内容：文档列表 -->
       <el-col :span="18">
-        <el-tabs v-model="activeTab">
-          <!-- 待审核文件 -->
-          <el-tab-pane label="待审核" name="pending">
-            <div class="content-card">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h3>⏳ 待审核文件</h3>
-                <el-button @click="refreshPending">
-                  <el-icon><Refresh /></el-icon>
-                  刷新
-                </el-button>
-              </div>
-              
-              <el-table :data="pendingFiles" style="width: 100%;" v-loading="pendingLoading">
-                <el-table-column prop="original_filename" label="文件名" min-width="200">
-                  <template #default="{ row }">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <el-icon color="#d97706"><Document /></el-icon>
-                      <span>{{ row.original_filename }}</span>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="category" label="分类" width="120">
-                  <template #default="{ row }">
-                    <el-tag size="small" type="warning">{{ row.category }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="file_size" label="大小" width="100">
-                  <template #default="{ row }">
-                    {{ formatSize(row.file_size) }}
-                  </template>
-                </el-table-column>
-                <el-table-column prop="upload_time" label="上传时间" width="150">
-                  <template #default="{ row }">
-                    {{ formatTime(row.upload_time) }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="200">
-                  <template #default="{ row }">
-                    <el-button size="small" type="success" @click="approveFile(row)">
-                      批准
-                    </el-button>
-                    <el-button size="small" type="danger" @click="rejectFile(row)">
-                      拒绝
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-              
-              <div v-if="pendingFiles.length === 0 && !pendingLoading" style="text-align: center; padding: 40px; color: #6b7280;">
-                <el-icon :size="48"><CircleCheck /></el-icon>
-                <p style="margin-top: 8px;">没有待审核的文件</p>
-              </div>
-            </div>
-          </el-tab-pane>
+        <div class="content-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3>📋 已入库文档</h3>
+            <el-button @click="refreshDocuments">
+              <el-icon><Refresh /></el-icon>
+              刷新
+            </el-button>
+          </div>
           
-          <!-- 已入库文档 -->
-          <el-tab-pane label="已入库" name="approved">
-            <div class="content-card">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h3>📋 已入库文档</h3>
-                <el-button @click="refreshDocuments">
-                  <el-icon><Refresh /></el-icon>
-                  刷新
+          <el-table :data="documents" style="width: 100%;" v-loading="loading" row-key="path">
+            <el-table-column label="文件名" min-width="250">
+              <template #default="{ row }">
+                <div style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #409eff;" @click="viewDetail(row)">
+                  <el-icon color="#059669"><Document /></el-icon>
+                  <span>{{ row.name }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'imported' ? 'success' : row.status === 'orphan' ? 'warning' : 'info'" size="small">
+                  {{ row.status === 'imported' ? '已入库' : row.status === 'orphan' ? '孤立' : '未导入' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="chunks" label="切片" width="80" />
+            <el-table-column label="操作" width="180">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" @click="viewDetail(row)">
+                  查看详情
                 </el-button>
-              </div>
-              
-              <el-table :data="documents" style="width: 100%;" v-loading="loading">
-                <el-table-column label="文件名" min-width="200">
-                  <template #default="{ row }">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <el-icon :color="row.status === 'imported' ? '#059669' : row.status === 'orphan' ? '#d97706' : '#6b7280'"><Document /></el-icon>
-                      <span>{{ row.name }}</span>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column label="状态" width="120">
-                  <template #default="{ row }">
-                    <el-tag :type="row.status === 'imported' ? 'success' : row.status === 'orphan' ? 'warning' : 'info'" size="small">
-                      {{ row.status === 'imported' ? '已入库' : row.status === 'orphan' ? '孤立' : '未导入' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="chunks" label="Chunks" width="100" />
-                <el-table-column label="操作" width="100">
-                  <template #default="{ row }">
-                    <el-button size="small" type="danger" @click="deleteDocument(row)">
-                      删除
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-              
-              <div v-if="documents.length === 0 && !loading" style="text-align: center; padding: 40px; color: #6b7280;">
-                <el-icon :size="48"><FolderOpened /></el-icon>
-                <p style="margin-top: 8px;">暂无文档，请先上传资料</p>
-              </div>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
+                <el-button size="small" type="danger" @click="deleteDoc(row)">
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          
+          <div v-if="documents.length === 0 && !loading" style="text-align: center; padding: 40px; color: #6b7280;">
+            <el-icon :size="48"><FolderOpened /></el-icon>
+            <p style="margin-top: 8px;">暂无文档，请先上传资料</p>
+          </div>
+        </div>
       </el-col>
     </el-row>
+
+    <!-- 文档详情对话框 -->
+    <el-dialog v-model="detailVisible" title="文档详情" width="70%" top="5vh">
+      <div v-if="detailLoading" v-loading="true" style="height: 200px;"></div>
+      <div v-else-if="detailInfo">
+        <el-descriptions :column="2" border style="margin-bottom: 16px;">
+          <el-descriptions-item label="文件名">{{ detailInfo.source_name }}</el-descriptions-item>
+          <el-descriptions-item label="切片数">{{ detailInfo.chunks }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ detailInfo.category || '未分类' }}</el-descriptions-item>
+          <el-descriptions-item label="状态">已入库</el-descriptions-item>
+        </el-descriptions>
+        
+        <h3 style="margin-bottom: 12px;">📄 切片内容（共 {{ detailChunks.length }} 个）</h3>
+        
+        <el-scrollbar max-height="400px">
+          <div v-for="chunk in detailChunks" :key="chunk.index" class="chunk-item">
+            <div class="chunk-header">
+              <el-tag size="small" type="info">#{{ chunk.index }}</el-tag>
+              <span style="color: #6b7280; font-size: 12px;">{{ chunk.content.length }} 字</span>
+            </div>
+            <div class="chunk-content">{{ chunk.content }}</div>
+          </div>
+        </el-scrollbar>
+        
+        <div v-if="detailChunks.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
+          <p>该文档没有切片记录</p>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { documentsApi } from '@/api'
 
 const documents = ref([])
-const pendingFiles = ref([])
-const stats = ref({ count: 0, status: '未初始化' })
+const stats = ref({ count: 0, chunks: 0, status: '未初始化' })
 const selectedCategory = ref('textbook')
 const fileList = ref([])
 const uploading = ref(false)
 const loading = ref(false)
-const pendingLoading = ref(false)
-const activeTab = ref('pending')
+
+// 详情对话框
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detailInfo = ref(null)
+const detailChunks = ref([])
+
+const importedCount = computed(() => {
+  return documents.value.filter(d => d.status === 'imported').length
+})
 
 const refreshDocuments = async () => {
   loading.value = true
@@ -238,23 +192,17 @@ const refreshDocuments = async () => {
     const res = await documentsApi.list()
     documents.value = res.data || []
     
-    stats.value = { count: documents.value.length, status: '已加载' }
+    const statsRes = await documentsApi.stats()
+    const s = statsRes.data || {}
+    stats.value = { 
+      count: documents.value.length, 
+      chunks: s.chunk_count || 0,
+      status: '已加载' 
+    }
   } catch (error) {
     console.error('获取文档失败:', error)
   } finally {
     loading.value = false
-  }
-}
-
-const refreshPending = async () => {
-  pendingLoading.value = true
-  try {
-    const res = await documentsApi.pending()
-    pendingFiles.value = res.data.files || []
-  } catch (error) {
-    console.error('获取待审核文件失败:', error)
-  } finally {
-    pendingLoading.value = false
   }
 }
 
@@ -273,9 +221,8 @@ const uploadFiles = async () => {
     for (const file of fileList.value) {
       await documentsApi.importFile(file.raw, selectedCategory.value)
     }
-    ElMessage.success('上传成功，等待管理员审核')
+    ElMessage.success(`上传成功：${fileList.value.length} 个文件已入库`)
     fileList.value = []
-    await refreshPending()
     await refreshDocuments()
   } catch (error) {
     ElMessage.error('上传失败: ' + error.message)
@@ -284,38 +231,30 @@ const uploadFiles = async () => {
   }
 }
 
-const approveFile = async (file) => {
+const viewDetail = async (doc) => {
+  detailVisible.value = true
+  detailLoading.value = true
+  detailInfo.value = null
+  detailChunks.value = []
+  
   try {
-    await ElMessageBox.confirm(`确定要批准文件 "${file.original_filename}" 吗？`, '确认批准')
-    await documentsApi.approve(file.pending_id)
-    ElMessage.success('文件已批准入库')
-    await refreshPending()
-    await refreshDocuments()
+    const [infoRes, chunksRes] = await Promise.all([
+      documentsApi.detail(doc.path),
+      documentsApi.chunks(doc.path)
+    ])
+    detailInfo.value = infoRes.data
+    detailChunks.value = chunksRes.data?.chunks || []
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('批准失败: ' + error.message)
-    }
+    ElMessage.error('获取详情失败: ' + error.message)
+  } finally {
+    detailLoading.value = false
   }
 }
 
-const rejectFile = async (file) => {
+const deleteDoc = async (doc) => {
   try {
-    await ElMessageBox.confirm(`确定要拒绝文件 "${file.original_filename}" 吗？文件将被删除。`, '确认拒绝')
-    await documentsApi.reject(file.pending_id)
-    ElMessage.success('文件已拒绝并删除')
-    await refreshPending()
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('拒绝失败: ' + error.message)
-    }
-  }
-}
-
-const deleteDocument = async (doc) => {
-  try {
-    await ElMessageBox.confirm('确定要删除这个文档吗？', '确认')
-    const source = doc.metadata?.source || doc.id
-    await documentsApi.delete(source)
+    await ElMessageBox.confirm(`确定要删除 "${doc.name}" 吗？`, '确认删除', { type: 'warning' })
+    await documentsApi.delete(doc.path)
     ElMessage.success('删除成功')
     await refreshDocuments()
   } catch (error) {
@@ -325,21 +264,7 @@ const deleteDocument = async (doc) => {
   }
 }
 
-const formatSize = (bytes) => {
-  if (!bytes) return '-'
-  if (bytes < 1024) return bytes + 'B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB'
-  return (bytes / 1024 / 1024).toFixed(1) + 'MB'
-}
-
-const formatTime = (timestamp) => {
-  if (!timestamp) return '-'
-  const date = new Date(timestamp * 1000)
-  return date.toLocaleString('zh-CN')
-}
-
 onMounted(() => {
-  refreshPending()
   refreshDocuments()
 })
 </script>
@@ -348,5 +273,84 @@ onMounted(() => {
 .library-page {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  font-size: 24px;
+  color: #1f2937;
+  margin: 0 0 8px 0;
+}
+
+.page-header p {
+  color: #6b7280;
+  font-size: 14px;
+  margin: 0;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-info h3 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  color: #1f2937;
+}
+
+.stat-info p {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 4px 0 0 0;
+}
+
+.content-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.chunk-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.chunk-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.chunk-content {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 150px;
+  overflow-y: auto;
 }
 </style>

@@ -85,6 +85,8 @@ export const documentsApi = {
   cleanOrphans: () => api.post('/documents/clean-orphans'),
   orphans: () => api.get('/documents/orphans'),
   stats: () => api.get('/documents/stats'),
+  detail: (source) => api.get(`/documents/detail?source=${encodeURIComponent(source)}`),
+  chunks: (source) => api.get(`/documents/chunks?source=${encodeURIComponent(source)}`),
   pending: () => api.get('/documents/pending'),
   approve: (pendingId) => api.post(`/documents/approve/${pendingId}`),
   reject: (pendingId) => api.post(`/documents/reject/${pendingId}`),

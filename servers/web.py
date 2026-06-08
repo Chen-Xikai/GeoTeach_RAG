@@ -757,6 +757,28 @@ async def get_document_stats():
     except Exception as e:
         return ApiResponse(status="error", message=str(e))
 
+@app.get("/api/documents/detail")
+async def get_document_detail(source: str):
+    """获取文档详情"""
+    try:
+        db = get_db()
+        info = db.get_document_info(source)
+        if not info:
+            return ApiResponse(status="error", message="文档不存在")
+        return ApiResponse(status="success", data=info)
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.get("/api/documents/chunks")
+async def get_document_chunks(source: str):
+    """获取文档的切片内容"""
+    try:
+        db = get_db()
+        chunks = db.get_document_chunks(source)
+        return ApiResponse(status="success", data={"chunks": chunks, "count": len(chunks)})
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
 @app.get("/api/documents/list-files")
 async def list_files(category: str = None):
     """列出所有文件（用于同步）"""

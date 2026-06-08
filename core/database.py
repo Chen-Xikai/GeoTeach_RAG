@@ -142,9 +142,10 @@ class DocumentDatabase:
     def exists(self, source: str) -> bool:
         """检查文档是否存在"""
         try:
+            safe_source = source.replace("\\", "\\\\")
             results = self.client.query(
                 collection_name=self.collection_name,
-                filter=f'source == "{source}"',
+                filter=f'source == "{safe_source}"',
                 limit=1
             )
             return len(results) > 0
@@ -154,9 +155,10 @@ class DocumentDatabase:
     def get_hash(self, source: str) -> Optional[str]:
         """获取文档hash"""
         try:
+            safe_source = source.replace("\\", "\\\\")
             results = self.client.query(
                 collection_name=self.collection_name,
-                filter=f'source == "{source}"',
+                filter=f'source == "{safe_source}"',
                 output_fields=["content_hash"],
                 limit=1
             )
@@ -222,9 +224,11 @@ class DocumentDatabase:
     def get_document_info(self, source: str) -> Optional[dict]:
         """获取文档信息"""
         try:
+            # Milvus过滤器需要转义反斜杠
+            safe_source = source.replace("\\", "\\\\")
             results = self.client.query(
                 collection_name=self.collection_name,
-                filter=f'source == "{source}"',
+                filter=f'source == "{safe_source}"',
                 output_fields=["source", "category", "content_hash", "content"],
                 limit=1
             )
@@ -233,7 +237,7 @@ class DocumentDatabase:
                 # 统计chunks数量
                 count_results = self.client.query(
                     collection_name=self.collection_name,
-                    filter=f'source == "{source}"',
+                    filter=f'source == "{safe_source}"',
                     output_fields=["id"],
                     limit=1000
                 )
@@ -250,6 +254,30 @@ class DocumentDatabase:
         except Exception as e:
             print(f"获取文档信息失败 {source}: {e}")
             return None
+    
+    def get_document_chunks(self, source: str) -> List[dict]:
+        """获取指定文档的所有切片"""
+        try:
+            # Milvus过滤器需要转义反斜杠
+            safe_source = source.replace("\\", "\\\\")
+            results = self.client.query(
+                collection_name=self.collection_name,
+                filter=f'source == "{safe_source}"',
+                output_fields=["id", "content", "category", "source"],
+                limit=10000
+            )
+            chunks = []
+            for i, result in enumerate(results, 1):
+                chunks.append({
+                    "index": i,
+                    "content": result.get("content", ""),
+                    "source": result.get("source", ""),
+                    "category": result.get("category", ""),
+                })
+            return chunks
+        except Exception as e:
+            print(f"获取切片失败 {source}: {e}")
+            return []
     
     def search(self, query: str, n_results: int = 5, category: str = None) -> List[dict]:
         """搜索文档（带缓存和索引优化）"""
@@ -400,11 +428,12 @@ class DocumentDatabase:
         try:
             # 标准化路径（使用正斜杠）
             source_normalized = source.replace("\\", "/")
+            safe_source = source.replace("\\", "\\\\")
             
             # 先尝试精确匹配
             results = self.client.query(
                 collection_name=self.collection_name,
-                filter=f'source == "{source}"',
+                filter=f'source == "{safe_source}"',
                 output_fields=["id"]
             )
             
