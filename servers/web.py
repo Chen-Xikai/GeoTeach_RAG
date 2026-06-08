@@ -303,7 +303,8 @@ async def list_documents(source: str = "all"):
             src = doc.get("id", "") or doc.get("metadata", {}).get("source", "")
             if src:
                 vector_map[src] = doc
-                chunk_counts[src] = chunk_counts.get(src, 0) + 1
+                # 使用list_documents返回的chunks字段
+                chunk_counts[src] = doc.get("chunks", 1)
         
         result = []
         for doc_path in local_docs:
@@ -841,13 +842,23 @@ async def reject_pending_file(pending_id: str):
     return ApiResponse(status="success", message="文件已拒绝")
 
 @app.post("/api/documents/import-file")
-async def import_single_file(file: UploadFile = File(...), category: str = None):
+async def import_single_file(
+    file: UploadFile = File(...), 
+    category: str = None,
+    chunk_size: int = 500,
+    chunk_overlap: int = 50
+):
     """导入单个文件到向量库"""
     try:
         from core.multimodal import read_file, SUPPORTED_EXTENSIONS
         
         db = get_db()
+        
+        # 使用指定切片参数，或使用默认配置
         chunk_cfg = get_chunk_config()
+        if chunk_size != 500 or chunk_overlap != 50:
+            chunk_cfg["chunk_size"] = chunk_size
+            chunk_cfg["overlap"] = chunk_overlap
         
         ext = Path(file.filename).suffix.lower()
         if ext not in SUPPORTED_EXTENSIONS:

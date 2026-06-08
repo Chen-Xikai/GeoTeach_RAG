@@ -90,10 +90,12 @@ export const documentsApi = {
   pending: () => api.get('/documents/pending'),
   approve: (pendingId) => api.post(`/documents/approve/${pendingId}`),
   reject: (pendingId) => api.post(`/documents/reject/${pendingId}`),
-  importFile: (file, category) => {
+  importFile: (file, category, chunkSize = 500, chunkOverlap = 50) => {
     const formData = new FormData()
     formData.append('file', file)
     if (category) formData.append('category', category)
+    formData.append('chunk_size', chunkSize)
+    formData.append('chunk_overlap', chunkOverlap)
     return api.post('/documents/import-file', formData, { timeout: 300000 })
   }
 }

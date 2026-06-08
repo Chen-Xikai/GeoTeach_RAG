@@ -59,6 +59,16 @@
                 <el-option label="讲课稿" value="lecture_draft" />
               </el-select>
             </el-form-item>
+            
+            <el-form-item label="切片大小">
+              <el-input-number v-model="chunkSize" :min="100" :max="2000" :step="50" style="width: 100%;" />
+              <div style="color: #6b7280; font-size: 12px; margin-top: 4px;">当前: {{ chunkSize }} 字符</div>
+            </el-form-item>
+            
+            <el-form-item label="重叠长度">
+              <el-input-number v-model="chunkOverlap" :min="0" :max="200" :step="10" style="width: 100%;" />
+              <div style="color: #6b7280; font-size: 12px; margin-top: 4px;">当前: {{ chunkOverlap }} 字符</div>
+            </el-form-item>
           </el-form>
           
           <el-upload
@@ -175,6 +185,8 @@ import { documentsApi } from '@/api'
 const documents = ref([])
 const stats = ref({ count: 0, chunks: 0, status: '未初始化' })
 const selectedCategory = ref('textbook')
+const chunkSize = ref(500)
+const chunkOverlap = ref(50)
 const fileList = ref([])
 const uploading = ref(false)
 const loading = ref(false)
@@ -223,7 +235,7 @@ const uploadFiles = async () => {
   uploading.value = true
   try {
     for (const file of fileList.value) {
-      await documentsApi.importFile(file.raw, selectedCategory.value)
+      await documentsApi.importFile(file.raw, selectedCategory.value, chunkSize.value, chunkOverlap.value)
     }
     ElMessage.success(`上传成功：${fileList.value.length} 个文件已入库`)
     fileList.value = []

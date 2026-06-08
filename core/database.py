@@ -169,36 +169,37 @@ class DocumentDatabase:
             return None
     
     def list_documents(self, category: str = None) -> List[dict]:
-        """获取唯一文档列表（按source去重）"""
+        """获取唯一文档列表（按source去重，返回切片数）"""
         try:
             filter_expr = None
             if category:
                 filter_expr = f'category == "{category}"'
             
+            # 查询所有chunk
             results = self.client.query(
                 collection_name=self.collection_name,
                 filter=filter_expr,
-                output_fields=["source", "category", "content"],
-                limit=1000
+                output_fields=["source", "category"],
+                limit=10000
             )
             
-            # 按source去重，只保留每个文档的第一个chunk
-            seen_sources = set()
-            documents = []
+            # 按source分组计数
+            doc_chunks = {}
             for result in results:
                 source = result.get("source", "")
-                if source and source not in seen_sources:
-                    seen_sources.add(source)
-                    content = result.get("content", "")
-                    documents.append({
-                        "id": source,
-                        "metadata": {
-                            "source": source,
-                            "category": result.get("category", ""),
-                        },
-                        "content": content[:200] if content else ""
-                    })
+                if source:
+                    if source not in doc_chunks:
+                        doc_chunks[source] = {"category": result.get("category", ""), "chunks": 0}
+                    doc_chunks[source]["chunks"] += 1
             
+            # 返回去重结果 + chunks数量
+            documents = []
+            for source, info in doc_chunks.items():
+                documents.append({
+                    "id": source,
+                    "metadata": {"source": source, "category": info["category"]},
+                    "chunks": info["chunks"]
+                })
             return documents
         except Exception as e:
             print(f"列出文档失败: {e}")
