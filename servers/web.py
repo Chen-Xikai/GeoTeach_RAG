@@ -103,6 +103,7 @@ class SearchRequest(BaseModel):
 
 class QARequest(BaseModel):
     question: str
+    mode: str = "teacher"
 
 class GenerateRequest(BaseModel):
     topic: str
@@ -1214,7 +1215,7 @@ async def search_documents(request: SearchRequest):
 async def question_answer(request: QARequest):
     try:
         generator = get_generator()
-        result = generator.answer_question(request.question)
+        result = generator.answer_question(request.question, mode=request.mode)
         return ApiResponse(status="success", data={"answer": result["answer"], "sources": result["sources"]})
     except Exception as e:
         return ApiResponse(status="error", message=str(e))

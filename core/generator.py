@@ -296,8 +296,12 @@ class ContentGenerator:
         content = self._call_llm(prompt)
         return {"content": content, "sources": sources}
     
-    def answer_question(self, question: str) -> dict:
+    def answer_question(self, question: str, mode: str = "teacher") -> dict:
         """智能问答
+        
+        Args:
+            question: 用户问题
+            mode: 角色模式，"teacher" 或 "student"
         
         Returns:
             dict: {"answer": str, "sources": list}
@@ -305,8 +309,26 @@ class ContentGenerator:
         # 检索上下文
         context, sources = self._retrieve_context(question)
         
+        # 根据模式选择不同的 system prompt
+        if mode == "student":
+            system_prompt = "你是一位耐心的地理学习助手，擅长解答地理学习问题。"
+            answer_requirements = """## 回答要求
+1. 用通俗易懂的语言回答
+2. 重点解释概念和原理
+3. 提供学习方法和记忆技巧
+4. 结合生活实际举例说明
+5. 在回答中引用相关资料时，请使用 [1]、[2] 等序号标注引用来源"""
+        else:
+            system_prompt = "你是一位资深的地理教育专家，擅长解答地理教学相关问题。"
+            answer_requirements = """## 回答要求
+1. 回答要专业、准确
+2. 结合实际教学经验
+3. 如果涉及课标要求，请引用具体条目
+4. 提供可操作的教学建议
+5. 在回答中引用相关资料时，请使用 [1]、[2] 等序号标注引用来源"""
+        
         # 生成Prompt
-        prompt = f"""你是一位资深的地理教育专家，擅长解答地理教学相关问题。
+        prompt = f"""{system_prompt}
 
 ## 相关资料
 {context}
@@ -314,12 +336,7 @@ class ContentGenerator:
 ## 问题
 {question}
 
-## 回答要求
-1. 回答要专业、准确
-2. 结合实际教学经验
-3. 如果涉及课标要求，请引用具体条目
-4. 提供可操作的建议
-5. 在回答中引用相关资料时，请使用 [1]、[2] 等序号标注引用来源
+{answer_requirements}
 
 请给出详细的回答："""
         

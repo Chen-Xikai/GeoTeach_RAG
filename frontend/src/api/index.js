@@ -122,7 +122,7 @@ export const generateApi = {
 
 // 智能问答
 export const qaApi = {
-  ask: (question) => api.post('/qa', { question })
+  ask: (question, mode = 'teacher') => api.post('/qa', { question, mode })
 }
 
 // 服务管理

@@ -1,30 +1,33 @@
 <template>
   <div class="qa-page">
-    <!-- 页面标题 -->
     <div class="page-header">
       <h1>❓ 智能问答</h1>
       <p>基于知识库解答地理教学问题</p>
     </div>
 
     <el-row :gutter="16">
-      <!-- 左侧：历史和示例 -->
+      <!-- 左侧：模式和说明 -->
       <el-col :span="6">
         <div class="content-card">
+          <h3 style="margin-bottom: 16px;">👤 角色模式</h3>
+          <el-segmented v-model="mode" :options="modeOptions" @change="handleModeChange" />
+          
+          <div class="mode-desc" v-if="mode === 'teacher'">
+            <p><strong>教师端模式</strong></p>
+            <p>以地理教育专家身份回答，重点关注教学策略、课标解读、课堂设计。</p>
+          </div>
+          <div class="mode-desc" v-else>
+            <p><strong>学生端模式</strong></p>
+            <p>以学习助手身份回答，重点关注概念解释、学习方法、答题技巧。</p>
+          </div>
+          
+          <el-divider />
+          
           <h3 style="margin-bottom: 16px;">💡 使用说明</h3>
           <el-collapse>
-            <el-collapse-item title="功能特点" name="features">
-              <ul class="feature-list">
-                <li>专业解答地理教学问题</li>
-                <li>引用课程标准要求</li>
-                <li>提供可操作的教学建议</li>
-              </ul>
-            </el-collapse-item>
             <el-collapse-item title="示例问题" name="examples">
               <ul class="example-list">
-                <li @click="askExample('如何讲解气压带和风带？')">如何讲解气压带和风带？</li>
-                <li @click="askExample('地球运动的教学难点是什么？')">地球运动的教学难点是什么？</li>
-                <li @click="askExample('如何设计地理实践活动？')">如何设计地理实践活动？</li>
-                <li @click="askExample('什么是板块构造？')">什么是板块构造？</li>
+                <li v-for="(q, idx) in currentExamples" :key="idx" @click="askExample(q)">{{ q }}</li>
               </ul>
             </el-collapse-item>
           </el-collapse>
@@ -34,7 +37,8 @@
           <h3 style="margin-bottom: 16px;">📊 知识库状态</h3>
           <el-descriptions :column="1" border size="small">
             <el-descriptions-item label="文档数量">{{ stats.count || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="状态">{{ stats.status || '未初始化' }}</el-descriptions-item>
+            <el-descriptions-item label="当前模式">{{ mode === 'teacher' ? '教师端' : '学生端' }}</el-descriptions-item>
+            <el-descriptions-item label="对话条数">{{ messages.length }}</el-descriptions-item>
           </el-descriptions>
           
           <el-button 
@@ -53,8 +57,8 @@
           <div class="messages-container" ref="messagesContainer">
             <div v-if="messages.length === 0" class="welcome-message">
               <el-icon :size="64" color="#7c3aed"><ChatDotRound /></el-icon>
-              <h2>GeoTeach AI 助手</h2>
-              <p>我是您的地理教学助手，可以帮您解答教学问题、提供教学建议。</p>
+              <h2>{{ mode === 'teacher' ? 'GeoTeach 教师助手' : 'GeoTeach 学习助手' }}</h2>
+              <p>{{ mode === 'teacher' ? '我是您的地理教学专家，可以帮您解答教学问题、提供教学建议。' : '我是您的地理学习助手，可以帮您理解概念、提供学习方法。' }}</p>
               <p>请在下方输入您的问题开始对话。</p>
             </div>
             
@@ -117,17 +121,67 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { qaApi, documentsApi } from '@/api'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 
+// 模式配置
+const modeOptions = [
+  { label: '👨‍🏫 教师端', value: 'teacher' },
+  { label: '👨‍🎓 学生端', value: 'student' }
+]
+
+const teacherExamples = [
+  '如何讲解气压带和风带？',
+  '地球运动的教学难点是什么？',
+  '如何设计地理实践活动？',
+  '课标中对区域认知的要求是什么？'
+]
+
+const studentExamples = [
+  '什么是板块构造？',
+  '如何理解季风的形成？',
+  '怎样记忆世界气候类型？',
+  '洋流对气候有什么影响？'
+]
+
+// 状态
+const mode = ref('teacher')
 const messages = ref([])
 const inputMessage = ref('')
 const loading = ref(false)
 const stats = ref({ count: 0, status: '未初始化' })
 const messagesContainer = ref(null)
 
+const currentExamples = computed(() => {
+  return mode.value === 'teacher' ? teacherExamples : studentExamples
+})
+
+// localStorage 键名
+const getStorageKey = (m) => `geoteach_qa_${m}`
+
+// 保存聊天记录到 localStorage
+const saveMessages = () => {
+  try {
+    localStorage.setItem(getStorageKey(mode.value), JSON.stringify(messages.value))
+  } catch (e) {
+    console.error('保存聊天记录失败:', e)
+  }
+}
+
+// 从 localStorage 加载聊天记录
+const loadMessages = () => {
+  try {
+    const stored = localStorage.getItem(getStorageKey(mode.value))
+    messages.value = stored ? JSON.parse(stored) : []
+  } catch (e) {
+    console.error('加载聊天记录失败:', e)
+    messages.value = []
+  }
+}
+
+// 滚动到底部
 const scrollToBottom = () => {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -136,11 +190,11 @@ const scrollToBottom = () => {
   })
 }
 
+// 发送消息
 const sendMessage = async () => {
   const question = inputMessage.value.trim()
   if (!question || loading.value) return
   
-  // 添加用户消息
   messages.value.push({
     role: 'user',
     content: question,
@@ -150,11 +204,11 @@ const sendMessage = async () => {
   inputMessage.value = ''
   loading.value = true
   scrollToBottom()
+  saveMessages()
   
   try {
-    const res = await qaApi.ask(question)
+    const res = await qaApi.ask(question, mode.value)
     
-    // 添加AI回复
     messages.value.push({
       role: 'assistant',
       content: res.data.answer,
@@ -169,20 +223,37 @@ const sendMessage = async () => {
   } finally {
     loading.value = false
     scrollToBottom()
+    saveMessages()
   }
 }
 
+// 示例问题
 const askExample = (question) => {
   inputMessage.value = question
   sendMessage()
 }
 
+// 清空历史
 const clearHistory = () => {
   messages.value = []
+  saveMessages()
   ElMessage.success('对话历史已清空')
 }
 
+// 切换模式
+const handleModeChange = () => {
+  loadMessages()
+  scrollToBottom()
+}
+
+// 监听消息变化自动保存
+watch(messages, () => {
+  saveMessages()
+}, { deep: true })
+
 onMounted(async () => {
+  loadMessages()
+  
   try {
     const res = await documentsApi.stats()
     stats.value = res.data || { count: 0, status: '未初始化' }
@@ -196,6 +267,23 @@ onMounted(async () => {
 .qa-page {
   max-width: 1400px;
   margin: 0 auto;
+}
+
+.mode-desc {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.mode-desc p {
+  margin: 4px 0;
+}
+
+.mode-desc strong {
+  color: #1f2937;
 }
 
 .chat-card {
@@ -332,18 +420,13 @@ onMounted(async () => {
   flex: 1;
 }
 
-.feature-list,
 .example-list {
   padding-left: 20px;
   font-size: 14px;
 }
 
-.feature-list li,
 .example-list li {
   margin-bottom: 8px;
-}
-
-.example-list li {
   cursor: pointer;
   color: #7c3aed;
 }
