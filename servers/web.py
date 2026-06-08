@@ -32,6 +32,7 @@ from config.settings import (
     get_web_config, get_docs_dir, get_generated_dir, get_catalog_dir,
     get_chunk_config, get_retrieval_config, get_collection_name
 )
+from config.version import VERSION, PROJECT_NAME
 
 LOG_DIR = ROOT / "runtime" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -46,11 +47,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("GeoTeach-Web")
 
-app = FastAPI(title="GeoTeach RAG Web API", version="1.4.0")
+app = FastAPI(title=f"{PROJECT_NAME} Web API", version=VERSION)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://localhost:9767", "http://127.0.0.1:9767", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,7 +77,7 @@ class ConnectionManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except:
+            except Exception:
                 pass
 
 manager = ConnectionManager()
@@ -147,12 +148,12 @@ def check_port(host: str, port: int) -> bool:
         result = sock.connect_ex((host, port))
         sock.close()
         return result == 0
-    except:
+    except Exception:
         return False
 
 def get_local_documents(source: str = "all") -> List[str]:
     """获取本地文档路径列表（返回绝对路径）"""
-    from core.document import SUPPORTED_EXTENSIONS
+    from core.multimodal import SUPPORTED_EXTENSIONS
     
     docs_dir = get_docs_dir()
     paths = []
@@ -186,7 +187,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/api/system/health")
 async def health_check():
-    return {"status": "healthy", "version": "1.4.0"}
+    return {"status": "healthy", "version": VERSION}
 
 @app.get("/api/system/status")
 async def system_status():
@@ -196,7 +197,7 @@ async def system_status():
     return ApiResponse(
         status="success",
         data={
-            "version": "1.4.0",
+            "version": VERSION,
             "database": stats,
             "services": {
                 "web": {"online": True, "port": int(os.getenv("WEB_PORT", "9767"))},
@@ -216,17 +217,7 @@ async def get_config():
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
         
-        env_path = ROOT / "config" / ".env"
-        env_config = {}
-        if env_path.exists():
-            with open(env_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
-                        key, value = line.split('=', 1)
-                        env_config[key.strip()] = value.strip()
-        
-        return ApiResponse(status="success", data={"config": config, "env": env_config})
+        return ApiResponse(status="success", data={"config": config})
     except Exception as e:
         return ApiResponse(status="error", message=str(e))
 
@@ -345,7 +336,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
 async def import_documents(request: ImportRequest):
     """导入文档到向量库"""
     try:
-        from core.document import read_file, SUPPORTED_EXTENSIONS
+        from core.multimodal import read_file, SUPPORTED_EXTENSIONS
         
         db = get_db()
         chunk_cfg = get_chunk_config()
@@ -404,7 +395,7 @@ async def import_documents(request: ImportRequest):
 async def batch_import_documents(request: ImportRequest):
     """批量导入文档（带WebSocket进度）"""
     try:
-        from core.document import read_file, SUPPORTED_EXTENSIONS
+        from core.multimodal import read_file, SUPPORTED_EXTENSIONS
         
         db = get_db()
         chunk_cfg = get_chunk_config()
@@ -491,7 +482,7 @@ async def batch_delete_documents(request: ImportRequest):
         return ApiResponse(status="error", message=str(e))
 
 @app.post("/api/documents/delete-all")
-async def delete_all_documents(request: dict = {}):
+async def delete_all_documents(request: ImportRequest = ImportRequest(files=[])):
     """删除所有文档向量记录"""
     try:
         db = get_db()
@@ -511,13 +502,16 @@ async def delete_all_documents(request: dict = {}):
         logger.error(f"完全删除失败: {e}")
         return ApiResponse(status="error", message=str(e))
 
+class UpdateRequest(BaseModel):
+    file_path: str
+
 @app.post("/api/documents/update")
-async def update_document(request: dict):
+async def update_document(request: UpdateRequest):
     """更新单个文档"""
     try:
-        from core.document import read_file, SUPPORTED_EXTENSIONS
+        from core.multimodal import read_file, SUPPORTED_EXTENSIONS
         
-        file_path = request.get("file_path", "")
+        file_path = request.file_path
         if not file_path:
             return ApiResponse(status="error", message="未指定文件路径")
         
@@ -559,7 +553,7 @@ async def update_document(request: dict):
 async def sync_documents(request: SyncRequest = SyncRequest()):
     """增量同步文档"""
     try:
-        from core.document import load_all_documents
+        from core.multimodal import load_all_documents
         
         db = get_db()
         chunk_cfg = get_chunk_config()
@@ -628,7 +622,7 @@ async def sync_documents(request: SyncRequest = SyncRequest()):
 async def rebuild_documents(request: SyncRequest = SyncRequest()):
     """全量重建向量库"""
     try:
-        from core.document import load_all_documents
+        from core.multimodal import load_all_documents
         
         db = get_db()
         chunk_cfg = get_chunk_config()
@@ -736,7 +730,7 @@ async def list_files(category: str = None):
         docs_dir = get_docs_dir()
         files = []
         
-        from core.document import SUPPORTED_EXTENSIONS
+        from core.multimodal import SUPPORTED_EXTENSIONS
         
         if category:
             scan_dir = docs_dir / category

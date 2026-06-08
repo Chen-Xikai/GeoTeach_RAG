@@ -5,8 +5,8 @@
   "docs": {
     "dir": "data/docs"
   },
-  "chroma": {
-    "dir": "data/chroma_db"
+  "milvus": {
+    "dir": "data/milvus.db"
   },
   "generated": {
     "dir": "data/generated"

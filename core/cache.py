@@ -10,7 +10,6 @@ import json
 import hashlib
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from functools import lru_cache
 
 
 class EmbeddingCache:

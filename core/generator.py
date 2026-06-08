@@ -167,7 +167,6 @@ class ContentGenerator:
         # 检索上下文
         query = f"{topic} {chapter} 讲课稿"
         context, sources = self._retrieve_context(query, category="excellent_lesson")
-        context = self._retrieve_context(query, category="excellent_lesson")
         
         # 生成Prompt
         prompt = f"""请根据以下信息生成详细的地理讲课稿。

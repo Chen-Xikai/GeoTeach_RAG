@@ -134,6 +134,20 @@ def get_collection_name() -> str:
     return config.get("collection", {}).get("name", "geoteach_docs")
 
 
+def get_vision_config() -> dict:
+    """获取视觉模型配置"""
+    config = load_config()
+    return config.get("vision", {
+        "enabled": True,
+        "ocr_engine": "paddleocr",
+        "ocr_language": "ch",
+        "vision_model": "Qwen/Qwen2.5-VL-7B-Instruct",
+        "table_recognition": True,
+        "image_description": True,
+        "extract_geographic_info": True
+    })
+
+
 # ==================== 工具函数 ====================
 
 def ensure_directories():

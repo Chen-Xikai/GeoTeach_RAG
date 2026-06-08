@@ -98,7 +98,7 @@ class DocumentDatabase:
                 try:
                     count = self.count()
                     self._next_id = count + 1
-                except:
+                except Exception:
                     self._next_id = 1
         except Exception as e:
             print(f"确保集合存在失败: {e}")
@@ -650,7 +650,7 @@ class DocumentDatabase:
             if shadow_name:
                 try:
                     self.client.drop_collection(shadow_name)
-                except:
+                except Exception:
                     pass
             raise
     

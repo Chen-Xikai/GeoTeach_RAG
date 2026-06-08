@@ -40,6 +40,18 @@ export const configApi = {
   updateChunk: (data) => api.put('/config/chunk', data)
 }
 
+// 教材目录
+export const catalogApi = {
+  getLevels: () => api.get('/catalog/levels'),
+  getGrades: (level) => api.get(`/catalog/grades?level=${encodeURIComponent(level)}`),
+  getChapters: (level, grade, semester) => {
+    const params = new URLSearchParams({ level })
+    if (grade) params.append('grade', grade)
+    if (semester) params.append('semester', semester)
+    return api.get(`/catalog/chapters?${params.toString()}`)
+  }
+}
+
 // 文档
 export const documentsApi = {
   list: (source = 'all') => api.get(`/documents?source=${source}`),
@@ -52,21 +64,51 @@ export const documentsApi = {
     })
   },
   importFiles: (files) => api.post('/documents/import', { files }),
-  importAll: () => api.post('/documents/import-all'),
   batchImport: (files) => api.post('/documents/batch-import', { files }),
   delete: (filePath) => api.delete(`/documents/${encodeURIComponent(filePath)}`),
   batchDelete: (files) => api.post('/documents/batch-delete', { files }),
-  deleteAll: (source = 'all') => api.post('/documents/delete-all', { source }),
+  deleteAll: () => api.post('/documents/delete-all'),
   updateFile: (filePath) => api.post('/documents/update', { file_path: filePath }),
   sync: (source = 'all') => api.post('/documents/sync', { source }),
   rebuild: (source = 'all') => api.post('/documents/rebuild', { source }),
-  cleanOrphans: (source = 'all') => api.post('/documents/clean-orphans', { source }),
-  crawl: (url) => api.post('/documents/crawl', { url })
+  cleanOrphans: () => api.post('/documents/clean-orphans'),
+  orphans: () => api.get('/documents/orphans'),
+  stats: () => api.get('/documents/stats'),
+  listFiles: (category) => api.get(`/documents/list-files${category ? `?category=${category}` : ''}`),
+  pending: () => api.get('/documents/pending'),
+  approve: (pendingId) => api.post(`/documents/approve/${pendingId}`),
+  reject: (pendingId) => api.post(`/documents/reject/${pendingId}`),
+  importFile: (file, category) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (category) formData.append('category', category)
+    return api.post('/documents/import-file', formData, {
+      timeout: 300000,
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  }
 }
 
 // 搜索
 export const searchApi = {
-  search: (query) => api.post('/search', { query })
+  search: (query, nResults = 5, category = null) => {
+    const params = { query, n_results: nResults }
+    if (category) params.category = category
+    return api.post('/search', params)
+  }
+}
+
+// 内容生成
+export const generateApi = {
+  speechDraft: (data) => api.post('/generate/speech-draft', data),
+  lectureDraft: (data) => api.post('/generate/lecture-draft', data),
+  lessonPlan: (data) => api.post('/generate/lesson-plan', data),
+  studyPlan: (data) => api.post('/generate/study-plan', data)
+}
+
+// 智能问答
+export const qaApi = {
+  ask: (question) => api.post('/qa', { question })
 }
 
 // 服务管理

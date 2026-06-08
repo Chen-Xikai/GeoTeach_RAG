@@ -109,7 +109,7 @@ def validate_hnsw(collection) -> tuple[bool, str]:
             try:
                 collection.count()
                 return True, f"{count} records (query dim mismatch)"
-            except:
+            except Exception:
                 return False, f"HNSW 损坏: {err[:80]}"
         return False, err[:100]
 

@@ -25,12 +25,14 @@ ENV/
 .env
 
 # Data directories (keep structure, ignore content)
-data/chroma_db/*
-!data/chroma_db/.gitkeep
-data/generated/*
-!data/generated/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
 data/docs/*
 !data/docs/.gitkeep
+data/generated/*
+!data/generated/.gitkeep
+data/images/*
+!data/images/.gitkeep
 data/textbook/*
 !data/textbook/.gitkeep
 data/curriculum/*
@@ -63,8 +65,7 @@ frontend/.vite/
 .DS_Store
 Thumbs.db
 
-# ChromaDB
-chroma_db/
+# Database files
 *.db
 
 # Models

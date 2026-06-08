@@ -17,6 +17,9 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+
+from config.version import VERSION, PROJECT_NAME
 
 
 class ServiceManager:
@@ -30,14 +33,14 @@ class ServiceManager:
         try:
             r = requests.get("http://127.0.0.1:9767/api/system/health", timeout=2)
             return r.status_code == 200
-        except:
+        except Exception:
             return False
     
     def is_mcp_running(self) -> bool:
         try:
             r = requests.get("http://127.0.0.1:9766/health", timeout=2)
             return r.status_code == 200
-        except:
+        except Exception:
             return False
     
     def start_web(self):
@@ -75,13 +78,13 @@ class ServiceManager:
             try:
                 self.web_process.terminate()
                 self.web_process = None
-            except:
+            except Exception:
                 pass
         # 尝试通过端口杀进程
         try:
             subprocess.run(["taskkill", "/F", "/FI", "WINDOWTITLE eq *servers.web*"], 
                          capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-        except:
+        except Exception:
             pass
     
     def stop_mcp(self):
@@ -89,12 +92,12 @@ class ServiceManager:
             try:
                 self.mcp_process.terminate()
                 self.mcp_process = None
-            except:
+            except Exception:
                 pass
         try:
             subprocess.run(["taskkill", "/F", "/FI", "WINDOWTITLE eq *servers.mcp*"], 
                          capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-        except:
+        except Exception:
             pass
     
     def stop_all(self):
@@ -108,7 +111,7 @@ class LauncherGUI:
     def __init__(self):
         self.manager = ServiceManager()
         self.root = tk.Tk()
-        self.root.title("GeoTeach RAG 启动管理器")
+        self.root.title(f"{PROJECT_NAME} 启动管理器")
         self.root.geometry("500x400")
         self.root.resizable(False, False)
         
@@ -125,7 +128,7 @@ class LauncherGUI:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # 标题
-        title_label = ttk.Label(main_frame, text="GeoTeach RAG", font=("Helvetica", 18, "bold"))
+        title_label = ttk.Label(main_frame, text=PROJECT_NAME, font=("Helvetica", 18, "bold"))
         title_label.pack(pady=(0, 5))
         
         subtitle_label = ttk.Label(main_frame, text="地理教学AI助手", font=("Helvetica", 10))
@@ -192,7 +195,7 @@ class LauncherGUI:
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
         # 版本信息
-        version_label = ttk.Label(main_frame, text="v1.4.0 | 基于 Milvus Lite", font=("Helvetica", 8))
+        version_label = ttk.Label(main_frame, text=f"v{VERSION} | 基于 Milvus Lite", font=("Helvetica", 8))
         version_label.pack(pady=(10, 0))
     
     def log(self, message: str):

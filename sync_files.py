@@ -17,7 +17,7 @@ from datetime import datetime
 
 
 # 默认配置
-DEFAULT_SERVER = "https://your-app.up.railway.app"  # 替换为你的Railway域名
+DEFAULT_SERVER = os.environ.get("GEOTEACH_SERVER_URL", "http://127.0.0.1:9767")
 DEFAULT_INTERVAL = 300  # 5分钟
 LOCAL_DOCS_DIR = "data/docs"
 SYNC_STATE_FILE = "data/sync_state.json"

@@ -153,9 +153,9 @@ class ImageExtractor:
     
     def _get_extension_from_bytes(self, image_bytes: bytes) -> str:
         """根据图片字节判断扩展名"""
-        if image_bytes[:8] == b'\\x89PNG\\r\\n\\x1a\\n':
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
             return '.png'
-        elif image_bytes[:2] == b'\\xff\\xd8':
+        elif image_bytes[:2] == b'\xff\xd8':
             return '.jpg'
         elif image_bytes[:4] == b'GIF8':
             return '.gif'

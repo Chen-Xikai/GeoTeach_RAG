@@ -21,7 +21,7 @@ from datetime import datetime
 
 
 # 默认配置
-DEFAULT_SERVER = "https://your-app.up.railway.app"  # 替换为你的Railway域名
+DEFAULT_SERVER = os.environ.get("GEOTEACH_SERVER_URL", "http://127.0.0.1:9767")
 REVIEW_DIR = "data/review"  # 本地审核目录
 
 

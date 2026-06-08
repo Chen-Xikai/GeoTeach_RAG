@@ -16,6 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from config.version import VERSION, PROJECT_NAME
+
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -40,7 +42,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("GeoTeach-RAG-MCP")
 
-app = FastAPI(title="GeoTeach RAG MCP Server", version="1.0.0")
+app = FastAPI(title=f"{PROJECT_NAME} MCP Server", version=VERSION)
 
 
 def search_sync(query: str) -> str:
@@ -99,12 +101,12 @@ async def health_check():
     try:
         r = requests.get(f"{WEB_API_URL}/api/system/health", timeout=5)
         web_ok = r.status_code == 200
-    except:
+    except Exception:
         web_ok = False
     
     return {
         "status": "ok" if web_ok else "degraded",
-        "version": "1.0.0",
+        "version": VERSION,
         "web_api": "connected" if web_ok else "disconnected",
     }
 
@@ -176,7 +178,7 @@ async def mcp_endpoint(request: Request):
             "id": req_id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "serverInfo": {"name": "GeoTeach-RAG", "version": "1.0.0"},
+                "serverInfo": {"name": PROJECT_NAME, "version": VERSION},
                 "capabilities": {"tools": {}}
             }
         })
