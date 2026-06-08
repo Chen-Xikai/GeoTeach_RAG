@@ -164,24 +164,6 @@
         </div>
       </el-tab-pane>
 
-      <!-- 网页爬取 -->
-      <el-tab-pane label="网页爬取" name="crawl">
-        <div class="crawl-section">
-          <h3>网页爬取</h3>
-          <p>输入网页 URL，自动爬取内容并添加到向量库</p>
-          <el-form label-width="100px">
-            <el-form-item label="网页 URL">
-              <el-input v-model="crawlUrl" placeholder="https://example.com" size="large" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="crawlWeb" :loading="crawling" size="large">
-                <el-icon><Download /></el-icon>
-                <span>开始爬取</span>
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </div>
-      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -190,7 +172,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { documentsApi, createWebSocket } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Refresh, RefreshRight, Delete, Download, VideoPause, Document, FolderOpened } from '@element-plus/icons-vue'
+import { Upload, Refresh, RefreshRight, Delete, VideoPause, Document, FolderOpened } from '@element-plus/icons-vue'
 
 const activeTab = ref('list')
 const documents = ref([])
@@ -198,8 +180,6 @@ const loading = ref(false)
 const syncing = ref(false)
 const rebuilding = ref(false)
 const cleaning = ref(false)
-const crawling = ref(false)
-const crawlUrl = ref('')
 
 const selectedSource = ref('all')
 const selectedDocs = ref([])
@@ -503,7 +483,7 @@ const deleteAll = async () => {
     })
     deletingAll.value = true
     showProgress('完全删除所有文档...', 0, '', '准备中...', '开始删除')
-    const result = await documentsApi.deleteAll(selectedSource.value)
+    const result = await documentsApi.deleteAll()
     showProgress(`完全删除完成: ${result.data.deleted} 个文件`, 100, 'success', '完成', `删除 ${result.data.deleted} 个文件`)
     ElMessage.success(`完全删除完成: ${result.data.deleted} 个文件`)
     selectedDocs.value = []
@@ -561,7 +541,7 @@ const cleanOrphans = async () => {
   cleaning.value = true
   showProgress('清理孤立记录...', 0, '', '准备中...', '开始清理')
   try {
-    const result = await documentsApi.cleanOrphans(selectedSource.value)
+    const result = await documentsApi.cleanOrphans()
     if (result.data.cleaned === 0) {
       showProgress('没有孤立记录', 100, 'success', '完成', '没有孤立记录')
       ElMessage.info('没有孤立记录')
@@ -579,28 +559,6 @@ const cleanOrphans = async () => {
   }
 }
 
-const crawlWeb = async () => {
-  if (!crawlUrl.value) {
-    ElMessage.warning('请输入网页 URL')
-    return
-  }
-  crawling.value = true
-  showProgress(`爬取: ${crawlUrl.value}`, 0, '', crawlUrl.value, '正在爬取...')
-  try {
-    const result = await documentsApi.crawl(crawlUrl.value)
-    showProgress(`爬取成功: ${result.data.title}`, 100, 'success', crawlUrl.value, `完成 (${result.data.chunks} chunks)`)
-    ElMessage.success(`爬取成功: ${result.data.chunks} chunks`)
-    crawlUrl.value = ''
-    await refresh()
-  } catch (e) {
-    showProgress('爬取失败', 100, 'exception', crawlUrl.value, e.message)
-    ElMessage.error(`爬取失败: ${e.message}`)
-  } finally {
-    crawling.value = false
-    setTimeout(hideProgress, 3000)
-  }
-}
-
 const stopOperation = async () => {
   try {
     await ElMessageBox.confirm('确定要停止当前操作吗？', '确认停止', { type: 'warning' })
@@ -612,7 +570,6 @@ const stopOperation = async () => {
     batchImporting.value = false
     batchDeleting.value = false
     deletingAll.value = false
-    crawling.value = false
     setTimeout(hideProgress, 1000)
   } catch (e) {
     // 用户取消停止
@@ -791,19 +748,5 @@ onUnmounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
-}
-
-.crawl-section {
-  padding: 20px;
-}
-
-.crawl-section h3 {
-  margin-bottom: 8px;
-  color: #303133;
-}
-
-.crawl-section p {
-  margin-bottom: 16px;
-  color: #909399;
 }
 </style>

@@ -74,7 +74,6 @@ export const documentsApi = {
   cleanOrphans: () => api.post('/documents/clean-orphans'),
   orphans: () => api.get('/documents/orphans'),
   stats: () => api.get('/documents/stats'),
-  listFiles: (category) => api.get(`/documents/list-files${category ? `?category=${category}` : ''}`),
   pending: () => api.get('/documents/pending'),
   approve: (pendingId) => api.post(`/documents/approve/${pendingId}`),
   reject: (pendingId) => api.post(`/documents/reject/${pendingId}`),

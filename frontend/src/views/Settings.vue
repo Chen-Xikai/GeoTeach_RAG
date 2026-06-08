@@ -399,10 +399,15 @@ const cleanOrphans = async () => {
 // 检查MCP状态
 const checkMcpStatus = async () => {
   try {
-    const res = await fetch('http://127.0.0.1:9766/health')
-    const data = await res.json()
-    mcpStatus.value = data.status
-    mcpInfo.value = data
+    const res = await systemApi.status()
+    const mcp = res.data?.services?.mcp
+    if (mcp) {
+      mcpStatus.value = mcp.online ? 'ok' : 'error'
+      mcpInfo.value = { status: mcp.online ? 'ok' : 'degraded' }
+    } else {
+      mcpStatus.value = 'error'
+      mcpInfo.value = {}
+    }
   } catch (error) {
     mcpStatus.value = 'error'
     mcpInfo.value = {}
