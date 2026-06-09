@@ -5,7 +5,6 @@
     
     <!-- 已登录时显示主界面 -->
     <div v-else class="app-container">
-      <!-- 侧边栏 -->
       <aside class="sidebar">
         <div class="logo">
           <el-icon :size="32"><Location /></el-icon>
@@ -47,7 +46,6 @@
         </div>
       </aside>
       
-      <!-- 主内容区 -->
       <main class="main-content">
         <router-view />
       </main>
@@ -56,15 +54,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 
 const router = useRouter()
-const route = useRoute()
-const isLoggedIn = ref(localStorage.getItem('geoteach_auth') === 'true')
-const role = ref(localStorage.getItem('geoteach_role') || '')
+const isLoggedIn = ref(false)
+const role = ref('')
 const isAdmin = computed(() => role.value === 'admin')
+
+// 初始化登录状态
+const checkAuth = () => {
+  isLoggedIn.value = localStorage.getItem('geoteach_auth') === 'true'
+  role.value = localStorage.getItem('geoteach_role') || ''
+}
 
 const handleLogout = () => {
   localStorage.removeItem('geoteach_auth')
@@ -74,20 +77,12 @@ const handleLogout = () => {
   router.push('/login')
 }
 
-// 监听路由变化，同步登录状态
-watch(() => route.path, () => {
-  const auth = localStorage.getItem('geoteach_auth') === 'true'
-  const r = localStorage.getItem('geoteach_role') || ''
-  isLoggedIn.value = auth
-  role.value = r
-}, { immediate: true })
-
-// 监听 localStorage 变化（登录/登出时触发）
 onMounted(() => {
-  // 检查当前登录状态
-  isLoggedIn.value = localStorage.getItem('geoteach_auth') === 'true'
-  role.value = localStorage.getItem('geoteach_role') || ''
+  checkAuth()
 })
+
+// 暴露给子组件使用
+defineExpose({ checkAuth, isLoggedIn })
 </script>
 
 <style scoped>
