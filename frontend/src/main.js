@@ -10,6 +10,11 @@ import './styles/main.css'
 
 const app = createApp(App)
 
+// 全局错误处理
+app.config.errorHandler = (err, vm, info) => {
+  console.error('Vue error:', err, info)
+}
+
 // 注册Element Plus图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)

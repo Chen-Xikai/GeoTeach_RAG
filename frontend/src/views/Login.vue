@@ -43,9 +43,11 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { authApi } from '@/api'
 import { ElMessage } from 'element-plus'
 
+const router = useRouter()
 const password = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
@@ -66,13 +68,13 @@ const handleLogin = async () => {
       localStorage.setItem('geoteach_role', role)
       localStorage.setItem('geoteach_auth', 'true')
       ElMessage.success(res.data.message || '登录成功')
-      // 登录成功后跳转到首页
-      window.location.href = '/'
+      router.push('/')
     } else {
       errorMsg.value = res.message || '密码错误'
     }
   } catch (e) {
     errorMsg.value = e.message || '登录失败'
+    console.error('登录错误:', e)
   } finally {
     loading.value = false
   }
