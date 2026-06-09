@@ -130,7 +130,7 @@
         <div class="content-card" style="margin-top: 16px;">
           <h2 style="margin-bottom: 16px;">ℹ️ 系统信息</h2>
           <el-descriptions :column="1" border>
-            <el-descriptions-item label="版本">v1.4.0</el-descriptions-item>
+            <el-descriptions-item label="版本">{{ systemInfo.version || '加载中...' }}</el-descriptions-item>
             <el-descriptions-item label="Embedding">SiliconFlow BGE</el-descriptions-item>
             <el-descriptions-item label="Rerank">SiliconFlow BGE-reranker</el-descriptions-item>
             <el-descriptions-item label="向量库">Milvus Lite</el-descriptions-item>
@@ -153,12 +153,17 @@ const stats = ref({
   status: '正常'
 })
 
+const systemInfo = ref({
+  version: ''
+})
+
 onMounted(async () => {
   try {
     const statusRes = await systemApi.status()
     if (statusRes.data) {
       stats.value.documentCount = statusRes.data.database?.count || 0
       stats.value.status = statusRes.data.database?.status || '正常'
+      systemInfo.value.version = statusRes.data.version || ''
     }
   } catch (error) {
     console.error('获取状态失败:', error)

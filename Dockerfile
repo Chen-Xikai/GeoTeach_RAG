@@ -27,7 +27,6 @@ COPY servers/ servers/
 COPY runtime/ runtime/
 COPY data/ data/
 COPY start.py launcher.py ./
-COPY *.md ./
 
 # 复制前端构建产物
 COPY --from=frontend-builder /frontend/dist frontend/dist/

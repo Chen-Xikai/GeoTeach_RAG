@@ -783,6 +783,7 @@ class DocumentDatabase:
                 "vector": emb,
                 "source": meta.get("source", ""),
                 "category": meta.get("category", ""),
+                "file_type": meta.get("file_type", "other"),
                 "content_hash": content_hash,
                 "content": texts[i],
             })

@@ -10,6 +10,7 @@ import json
 import asyncio
 import logging
 import socket
+import mimetypes
 from pathlib import Path
 from typing import List, Optional, Any
 from datetime import datetime
@@ -50,7 +51,7 @@ logger = logging.getLogger("GeoTeach-Web")
 app = FastAPI(title=f"{PROJECT_NAME} Web API", version=VERSION)
 
 # CORS配置：支持生产环境和本地开发
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:9767,http://127.0.0.1:9767").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -657,7 +658,7 @@ async def sync_documents(request: SyncRequest = SyncRequest()):
         )
         
         # 通知进度推送结束
-        progress_queue.put_nowait({"done": True})
+        await progress_queue.put({"done": True})
         await push_task
         
         logger.info(f"同步完成: {stats}")
@@ -723,7 +724,7 @@ async def rebuild_documents(request: SyncRequest = SyncRequest()):
             lambda: db.rebuild(documents, chunk_cfg, on_progress=on_progress)
         )
         
-        progress_queue.put_nowait({"done": True})
+        await progress_queue.put({"done": True})
         await push_task
         
         logger.info(f"重建完成: {count} chunks")
@@ -1229,8 +1230,6 @@ async def question_answer(request: QARequest):
 # ============================================================
 #  静态文件服务
 # ============================================================
-
-import mimetypes
 
 mimetypes.add_type('application/javascript', '.js')
 mimetypes.add_type('application/json', '.json')

@@ -46,8 +46,6 @@ import { ref } from 'vue'
 import { authApi } from '@/api'
 import { ElMessage } from 'element-plus'
 
-const emit = defineEmits(['login'])
-
 const password = ref('')
 const loading = ref(false)
 const errorMsg = ref('')
@@ -68,7 +66,8 @@ const handleLogin = async () => {
       localStorage.setItem('geoteach_role', role)
       localStorage.setItem('geoteach_auth', 'true')
       ElMessage.success(res.data.message || '登录成功')
-      emit('login', role)
+      // 登录成功后跳转到首页
+      window.location.href = '/'
     } else {
       errorMsg.value = res.message || '密码错误'
     }

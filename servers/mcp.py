@@ -197,7 +197,7 @@ async def mcp_endpoint(request: Request):
 def main():
     """启动 MCP 服务器"""
     logger.info("=" * 50)
-    logger.info("GeoTeach RAG MCP Server V1.0.0 启动中...")
+    logger.info(f"GeoTeach RAG MCP Server V{VERSION} 启动中...")
     logger.info(f"Web API: {WEB_API_URL}")
     logger.info(f"监听: http://{os.getenv('MCP_SERVER_HOST', '127.0.0.1')}:{os.getenv('MCP_SERVER_PORT', '9766')}")
     logger.info("=" * 50)
