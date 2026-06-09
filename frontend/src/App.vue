@@ -1,6 +1,6 @@
 <template>
   <el-config-provider :locale="zhCn">
-    <!-- 未登录时直接跳转登录页 -->
+    <!-- 未登录时显示登录页 -->
     <router-view v-if="!isLoggedIn" />
     
     <!-- 已登录时显示主界面 -->
@@ -56,11 +56,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 
 const router = useRouter()
+const route = useRoute()
 const isLoggedIn = ref(localStorage.getItem('geoteach_auth') === 'true')
 const role = ref(localStorage.getItem('geoteach_role') || '')
 const isAdmin = computed(() => role.value === 'admin')
@@ -69,14 +70,23 @@ const handleLogout = () => {
   localStorage.removeItem('geoteach_auth')
   localStorage.removeItem('geoteach_role')
   isLoggedIn.value = false
+  role.value = ''
   router.push('/login')
 }
 
+// 监听路由变化，同步登录状态
+watch(() => route.path, () => {
+  const auth = localStorage.getItem('geoteach_auth') === 'true'
+  const r = localStorage.getItem('geoteach_role') || ''
+  isLoggedIn.value = auth
+  role.value = r
+}, { immediate: true })
+
+// 监听 localStorage 变化（登录/登出时触发）
 onMounted(() => {
-  router.afterEach((to) => {
-    isLoggedIn.value = localStorage.getItem('geoteach_auth') === 'true'
-    role.value = localStorage.getItem('geoteach_role') || ''
-  })
+  // 检查当前登录状态
+  isLoggedIn.value = localStorage.getItem('geoteach_auth') === 'true'
+  role.value = localStorage.getItem('geoteach_role') || ''
 })
 </script>
 
