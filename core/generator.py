@@ -75,6 +75,32 @@ class ContentGenerator:
         
         return result["choices"][0]["message"]["content"]
     
+    def _call_llm_with_messages(self, messages: list) -> str:
+        """使用消息列表调用LLM（支持多轮对话）"""
+        import requests
+        
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 4096
+        }
+        
+        response = requests.post(
+            f"{self._base_url}/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=120
+        )
+        response.raise_for_status()
+        result = response.json()
+        
+        return result["choices"][0]["message"]["content"]
+    
     def _retrieve_context(self, query: str, category: str = None, k: int = 5) -> tuple:
         """检索相关上下文
         
@@ -296,12 +322,13 @@ class ContentGenerator:
         content = self._call_llm(prompt)
         return {"content": content, "sources": sources}
     
-    def answer_question(self, question: str, mode: str = "teacher") -> dict:
+    def answer_question(self, question: str, mode: str = "teacher", history: list = None) -> dict:
         """智能问答
         
         Args:
             question: 用户问题
             mode: 角色模式，"teacher" 或 "student"
+            history: 对话历史 [{"role": "user"/"assistant", "content": "..."}]
         
         Returns:
             dict: {"answer": str, "sources": list}
@@ -327,10 +354,18 @@ class ContentGenerator:
 4. 提供可操作的教学建议
 5. 在回答中引用相关资料时，请使用 [1]、[2] 等序号标注引用来源"""
         
-        # 生成Prompt
-        prompt = f"""{system_prompt}
-
-## 相关资料
+        # 构建消息列表
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+        
+        # 添加历史对话（最近10轮）
+        if history:
+            for msg in history[-20:]:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+        
+        # 添加当前问题（附带检索到的上下文）
+        user_prompt = f"""## 相关资料
 {context}
 
 ## 问题
@@ -340,7 +375,10 @@ class ContentGenerator:
 
 请给出详细的回答："""
         
-        answer = self._call_llm(prompt)
+        messages.append({"role": "user", "content": user_prompt})
+        
+        # 调用LLM
+        answer = self._call_llm_with_messages(messages)
         
         return {
             "answer": answer,

@@ -101,9 +101,14 @@ class SearchRequest(BaseModel):
     n_results: int = 5
     category: Optional[str] = None
 
+class QAMessage(BaseModel):
+    role: str
+    content: str
+
 class QARequest(BaseModel):
     question: str
     mode: str = "teacher"
+    history: List[QAMessage] = []
 
 class GenerateRequest(BaseModel):
     topic: str
@@ -1215,7 +1220,8 @@ async def search_documents(request: SearchRequest):
 async def question_answer(request: QARequest):
     try:
         generator = get_generator()
-        result = generator.answer_question(request.question, mode=request.mode)
+        history = [{"role": m.role, "content": m.content} for m in request.history]
+        result = generator.answer_question(request.question, mode=request.mode, history=history)
         return ApiResponse(status="success", data={"answer": result["answer"], "sources": result["sources"]})
     except Exception as e:
         return ApiResponse(status="error", message=str(e))
