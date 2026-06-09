@@ -26,7 +26,7 @@ COPY core/ core/
 COPY servers/ servers/
 COPY runtime/ runtime/
 COPY data/ data/
-COPY start.py launcher.py sync_files.py review_files.py ./
+COPY start.py launcher.py ./
 COPY *.md ./
 
 # 复制前端构建产物
