@@ -384,3 +384,104 @@ class ContentGenerator:
             "answer": answer,
             "sources": sources
         }
+    
+    def answer_question_with_agent(self, question: str, mode: str = "teacher", history: list = None) -> dict:
+        """
+        智能问答（Agent 模式）- 支持多轮检索、Query改写、自主评估
+        
+        Args:
+            question: 用户问题
+            mode: 角色模式
+            history: 对话历史
+            
+        Returns:
+            dict: {"answer": str, "sources": list, "agent_info": dict}
+        """
+        from core.agent import RAGAgent
+        
+        agent = RAGAgent(self)
+        agent_info = {"rounds": 0, "rewritten_queries": [], "retrieval_scores": [], "answer_scores": {}}
+        
+        # Phase 1: Query 改写
+        queries = agent.rewrite_query(question, history)
+        agent_info["rewritten_queries"] = queries
+        
+        # Phase 2: 多轮检索（使用混合搜索）
+        all_results = []
+        best_context = ""
+        best_sources = []
+        
+        for round_num in range(agent.max_retrieval_rounds):
+            agent_info["rounds"] = round_num + 1
+            
+            for query in queries:
+                # 使用混合搜索（向量 + BM25）
+                results = self.db.hybrid_search(query, n_results=5, fetch_k=15)
+                
+                # 格式化结果
+                context_parts = []
+                sources = []
+                for i, doc in enumerate(results, 1):
+                    source = doc.get("metadata", {}).get("source", "")
+                    content = doc.get("page_content", "")
+                    context_parts.append(f"[{i}] {content}")
+                    sources.append({
+                        "id": i,
+                        "source": source,
+                        "score": doc.get("score", 0),
+                        "rrf_score": doc.get("rrf_score", 0)
+                    })
+                    all_results.append(doc)
+                
+                context = "\n\n".join(context_parts)
+                if len(context) > len(best_context):
+                    best_context = context
+                    best_sources = sources
+            
+            # 评估检索质量
+            retrieval_eval = agent.evaluate_retrieval(question, all_results)
+            agent_info["retrieval_scores"].append(retrieval_eval)
+            
+            if agent.should_retrieve_more(retrieval_eval, round_num):
+                # 重新改写 query
+                queries = agent.rewrite_query(question, history)
+                agent_info["rewritten_queries"].extend(queries)
+            else:
+                break
+        
+        # Phase 3: 生成回答（带评估和重试）
+        context = best_context
+        sources = best_sources
+        
+        for gen_round in range(2):
+            # 构建消息
+            system_prompt = "你是一位资深的地理教育专家。" if mode == "teacher" else "你是一位耐心的地理学习助手。"
+            
+            messages = [{"role": "system", "content": system_prompt}]
+            
+            if history:
+                for msg in agent.compress_history(history):
+                    messages.append({"role": msg["role"], "content": msg["content"]})
+            
+            user_prompt = f"## 相关资料\n{context}\n\n## 问题\n{question}\n\n请给出详细的回答："
+            messages.append({"role": "user", "content": user_prompt})
+            
+            answer = self._call_llm_with_messages(messages)
+            
+            # 评估回答质量
+            answer_eval = agent.evaluate_answer(question, context, answer)
+            agent_info["answer_scores"] = answer_eval
+            
+            if agent.should_regenerate(answer_eval, gen_round):
+                # 如果回答质量不够，重新检索
+                queries = agent.rewrite_query(question, history)
+                context, sources = self._retrieve_context(queries[0] if queries else question)
+                continue
+            
+            break
+        
+        return {
+            "answer": answer,
+            "sources": sources,
+            "agent_info": agent_info
+        }

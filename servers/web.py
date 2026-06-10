@@ -1222,8 +1222,71 @@ async def question_answer(request: QARequest):
     try:
         generator = get_generator()
         history = [{"role": m.role, "content": m.content} for m in request.history]
-        result = generator.answer_question(request.question, mode=request.mode, history=history)
-        return ApiResponse(status="success", data={"answer": result["answer"], "sources": result["sources"]})
+        
+        # 使用 Agent 模式
+        result = generator.answer_question_with_agent(
+            request.question, 
+            mode=request.mode, 
+            history=history
+        )
+        
+        return ApiResponse(status="success", data={
+            "answer": result["answer"], 
+            "sources": result["sources"],
+            "agent_info": result.get("agent_info", {})
+        })
+    except Exception as e:
+        logger.error(f"QA错误: {e}")
+        return ApiResponse(status="error", message=str(e))
+
+# ============================================================
+#  评测 API
+# ============================================================
+
+@app.post("/api/evaluate/retrieval")
+async def evaluate_retrieval(request: dict):
+    """评估检索质量"""
+    try:
+        from core.evaluator import RAGEvaluator
+        generator = get_generator()
+        evaluator = RAGEvaluator(generator)
+        
+        query = request.get("query", "")
+        results = request.get("results", [])
+        ground_truth = request.get("ground_truth", None)
+        
+        evaluation = evaluator.evaluate_retrieval_quality(query, results, ground_truth)
+        return ApiResponse(status="success", data=evaluation)
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/evaluate/answer")
+async def evaluate_answer(request: dict):
+    """评估回答质量"""
+    try:
+        from core.evaluator import RAGEvaluator
+        generator = get_generator()
+        evaluator = RAGEvaluator(generator)
+        
+        query = request.get("query", "")
+        answer = request.get("answer", "")
+        contexts = request.get("contexts", [])
+        
+        evaluation = evaluator.evaluate_answer_quality(query, answer, contexts)
+        return ApiResponse(status="success", data=evaluation)
+    except Exception as e:
+        return ApiResponse(status="error", message=str(e))
+
+@app.post("/api/evaluate/chunks")
+async def evaluate_chunks(request: dict):
+    """评估切片质量"""
+    try:
+        from core.evaluator import RAGEvaluator
+        evaluator = RAGEvaluator()
+        
+        chunks = request.get("chunks", [])
+        evaluation = evaluator.evaluate_chunk_quality(chunks)
+        return ApiResponse(status="success", data=evaluation)
     except Exception as e:
         return ApiResponse(status="error", message=str(e))
 

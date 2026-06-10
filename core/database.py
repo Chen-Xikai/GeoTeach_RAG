@@ -408,6 +408,132 @@ class DocumentDatabase:
             print(f"搜索失败: {e}")
             return []
     
+    def hybrid_search(self, query: str, n_results: int = 5, category: str = None, fetch_k: int = 15) -> List[dict]:
+        """
+        混合搜索：向量搜索 + BM25 关键词搜索 + RRF 融合
+        
+        Args:
+            query: 查询文本
+            n_results: 最终返回的结果数
+            category: 分类过滤
+            fetch_k: 初始检索数量（用于过度检索）
+            
+        Returns:
+            融合排序后的文档列表
+        """
+        # 1. 向量搜索（获取更多结果用于融合）
+        vector_results = self.search(query, n_results=fetch_k, category=category)
+        
+        # 2. BM25 关键词搜索
+        bm25_results = self._bm25_search(query, n_results=fetch_k, category=category)
+        
+        # 3. RRF 融合
+        fused_results = self._rrf_fusion(vector_results, bm25_results, k=60)
+        
+        return fused_results[:n_results]
+    
+    def _bm25_search(self, query: str, n_results: int = 5, category: str = None) -> List[dict]:
+        """BM25 关键词搜索"""
+        try:
+            # 简单的关键词匹配搜索
+            filter_expr = None
+            if category:
+                filter_expr = f'category == "{category}"'
+            
+            # 获取所有文档（用于关键词匹配）
+            results = self.client.query(
+                collection_name=self.collection_name,
+                filter=filter_expr,
+                output_fields=["source", "category", "content"],
+                limit=min(1000, n_results * 10)
+            )
+            
+            if not results:
+                return []
+            
+            # 简单的 BM25 评分：计算查询词在文档中的出现次数
+            query_terms = query.lower().split()
+            scored_results = []
+            
+            for result in results:
+                content = result.get("content", "").lower()
+                # 计算匹配分数
+                score = sum(content.count(term) for term in query_terms)
+                if score > 0:
+                    scored_results.append({
+                        "page_content": result.get("content", ""),
+                        "metadata": {
+                            "source": result.get("source", ""),
+                            "category": result.get("category", ""),
+                        },
+                        "score": score / max(len(query_terms), 1),
+                        "search_type": "bm25"
+                    })
+            
+            # 按分数排序
+            scored_results.sort(key=lambda x: x["score"], reverse=True)
+            return scored_results[:n_results]
+        except Exception as e:
+            print(f"BM25搜索失败: {e}")
+            return []
+    
+    def _rrf_fusion(self, vector_results: list, bm25_results: list, k: int = 60) -> List[dict]:
+        """
+        Reciprocal Rank Fusion (RRF) 融合算法
+        
+        Args:
+            vector_results: 向量搜索结果
+            bm25_results: BM25 搜索结果
+            k: RRF 参数（控制排名权重衰减）
+            
+        Returns:
+            融合排序后的文档列表
+        """
+        # 合并所有结果，按 source 去重
+        all_docs = {}
+        
+        # 处理向量搜索结果
+        for rank, doc in enumerate(vector_results, 1):
+            source = doc.get("metadata", {}).get("source", "")
+            if source:
+                rrf_score = 1.0 / (k + rank)
+                all_docs[source] = {
+                    "doc": doc,
+                    "rrf_score": rrf_score,
+                    "vector_rank": rank,
+                    "bm25_rank": None
+                }
+        
+        # 处理 BM25 搜索结果
+        for rank, doc in enumerate(bm25_results, 1):
+            source = doc.get("metadata", {}).get("source", "")
+            if source:
+                rrf_score = 1.0 / (k + rank)
+                if source in all_docs:
+                    all_docs[source]["rrf_score"] += rrf_score
+                    all_docs[source]["bm25_rank"] = rank
+                else:
+                    all_docs[source] = {
+                        "doc": doc,
+                        "rrf_score": rrf_score,
+                        "vector_rank": None,
+                        "bm25_rank": rank
+                    }
+        
+        # 按 RRF 分数排序
+        sorted_docs = sorted(all_docs.values(), key=lambda x: x["rrf_score"], reverse=True)
+        
+        # 返回融合后的结果
+        results = []
+        for item in sorted_docs:
+            doc = item["doc"].copy()
+            doc["rrf_score"] = item["rrf_score"]
+            doc["vector_rank"] = item["vector_rank"]
+            doc["bm25_rank"] = item["bm25_rank"]
+            results.append(doc)
+        
+        return results
+    
     def add(self, doc: dict, chunk_cfg: dict = None, source_type: str = "local_file") -> List[str]:
         """添加文档（带缓存优化）"""
         from core.chunking import chunk_single_document
