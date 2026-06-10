@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""GeoTeach AI Agent - 启动脚本"""
+"""GeoTeach RAG - 启动脚本"""
 
 import os
 import sys
-
-# 抑制TensorFlow警告
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 # 使用绝对路径
 script_dir = os.path.dirname(os.path.abspath(__file__))

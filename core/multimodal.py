@@ -7,7 +7,6 @@ GeoTeach AI Agent - 文档处理模块
 import os
 from pathlib import Path
 from typing import List, Dict, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.image_extractor import ImageExtractor
 from core.ocr import VisionProcessor
@@ -191,26 +190,6 @@ def load_all_documents(*dirs: Path, use_multimodal: bool = False) -> List[dict]:
     return documents
 
 
-def get_document_paths(*dirs: Path) -> List[str]:
-    """获取所有文档路径"""
-    paths = []
-    
-    for dir_path in dirs:
-        if not dir_path.exists():
-            continue
-        
-        for ext in SUPPORTED_EXTENSIONS:
-            files = list(dir_path.rglob(f"*{ext}"))
-            paths.extend([str(f) for f in files])
-    
-    return paths
-
-
-def get_supported_extensions() -> List[str]:
-    """获取支持的文件扩展名"""
-    return list(SUPPORTED_EXTENSIONS)
-
-
 # ==================== 多模态处理器 ====================
 
 class MultimodalProcessor:
@@ -345,40 +324,3 @@ class MultimodalProcessor:
         except Exception as e:
             print(f"图片处理失败 {image_path}: {e}")
             return None
-    
-    def process_batch(self, file_paths: List[str], max_workers: int = 2) -> List[dict]:
-        """
-        批量处理文档
-        
-        Args:
-            file_paths: 文件路径列表
-            max_workers: 最大并发数
-            
-        Returns:
-            处理后的文档列表
-        """
-        all_documents = []
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_path = {
-                executor.submit(self.process_document, fp): fp 
-                for fp in file_paths
-            }
-            for future in as_completed(future_to_path):
-                file_path = future_to_path[future]
-                try:
-                    docs = future.result()
-                    all_documents.extend(docs)
-                    print(f"处理完成: {file_path} ({len(docs)}个文档)")
-                except Exception as e:
-                    print(f"处理失败 {file_path}: {e}")
-        
-        return all_documents
-
-
-# ==================== 便捷函数 ====================
-
-def process_document_multimodal(file_path: str, use_vision_api: bool = True) -> List[dict]:
-    """便捷函数：处理单个文档"""
-    processor = MultimodalProcessor(use_vision_api=use_vision_api)
-    return processor.process_document(file_path)

@@ -4,7 +4,6 @@ GeoTeach AI Agent - 图片提取模块
 从PPT、PDF、DOCX等文档中提取图片。
 """
 
-import os
 import hashlib
 from pathlib import Path
 from typing import List, Dict, Optional

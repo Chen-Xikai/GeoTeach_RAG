@@ -1,5 +1,5 @@
 """
-GeoTeach AI Agent - 配置加载模块
+GeoTeach RAG - 配置加载模块
 
 提供统一的配置加载和访问接口。
 """
@@ -14,7 +14,7 @@ CONFIG_DIR = Path(__file__).parent
 ROOT_DIR = CONFIG_DIR.parent
 
 # 加载环境变量
-load_dotenv(CONFIG_DIR / ".env")
+load_dotenv(CONFIG_DIR / ".env", override=True)
 
 
 def load_config() -> dict:
@@ -22,13 +22,6 @@ def load_config() -> dict:
     config_path = CONFIG_DIR / "config.json"
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
-
-
-def save_config(config: dict):
-    """保存config.json配置"""
-    config_path = CONFIG_DIR / "config.json"
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
 
 
 # ==================== API配置 ====================
@@ -122,41 +115,7 @@ def get_catalog_dir() -> Path:
 
 # ==================== 模板配置 ====================
 
-def get_template_config(template_type: str) -> dict:
-    """获取模板配置"""
-    config = load_config()
-    return config.get("templates", {}).get(template_type, {})
-
-
 def get_collection_name() -> str:
     """获取集合名称"""
     config = load_config()
     return config.get("collection", {}).get("name", "geoteach_docs")
-
-
-def get_vision_config() -> dict:
-    """获取视觉模型配置"""
-    config = load_config()
-    return config.get("vision", {
-        "enabled": True,
-        "ocr_engine": "paddleocr",
-        "ocr_language": "ch",
-        "vision_model": "Qwen/Qwen2.5-VL-7B-Instruct",
-        "table_recognition": True,
-        "image_description": True,
-        "extract_geographic_info": True
-    })
-
-
-# ==================== 工具函数 ====================
-
-def ensure_directories():
-    """确保所有必要目录存在"""
-    dirs = [
-        get_docs_dir(),
-        get_generated_dir(),
-        get_templates_dir(),
-        get_catalog_dir(),
-    ]
-    for d in dirs:
-        d.mkdir(parents=True, exist_ok=True)

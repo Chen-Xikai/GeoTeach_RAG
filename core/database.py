@@ -301,52 +301,41 @@ class DocumentDatabase:
                 print(f"未找到文档: {source}")
                 return False
             
-            # 获取第一个chunk的embedding用于更新
             ids_to_update = [r["id"] for r in results]
             
-            # Milvus Lite 不支持直接更新字段，需要删除后重新插入
-            # 但为了简单起见，我们只更新第一个chunk的file_type
-            # 实际上Milvus Lite的动态字段更新有限制
-            # 这里我们采用删除+重新插入的方式
+            # 重新生成embedding并更新file_type
+            new_data = []
+            for r in results:
+                content = r.get("content", "")
+                try:
+                    vec = self.embeddings.embed_query(content[:500])
+                except Exception:
+                    vec = [0.0] * 1024
+                
+                new_data.append({
+                    "id": r["id"],
+                    "vector": vec,
+                    "source": r.get("source", ""),
+                    "category": r.get("category", ""),
+                    "file_type": file_type,
+                    "content_hash": r.get("content_hash", ""),
+                    "content": r.get("content", ""),
+                })
             
-            # 获取embedding
-            search_results = self.client.search(
+            # 删除旧记录
+            self.client.delete(
                 collection_name=self.collection_name,
-                data=[self.embeddings.embed_query("test")],
-                limit=1,
-                filter=f'source == "{safe_source}"',
-                output_fields=["vector", "source", "category", "file_type", "content_hash", "content"]
+                ids=ids_to_update
             )
             
-            if search_results and search_results[0]:
-                # 删除旧记录
-                self.client.delete(
-                    collection_name=self.collection_name,
-                    ids=ids_to_update
-                )
-                
-                # 重新插入，更新file_type
-                new_data = []
-                for i, r in enumerate(results):
-                    new_data.append({
-                        "id": r["id"],
-                        "vector": search_results[0][0].get("entity", {}).get("vector", []),
-                        "source": r.get("source", ""),
-                        "category": r.get("category", ""),
-                        "file_type": file_type,
-                        "content_hash": r.get("content_hash", ""),
-                        "content": r.get("content", ""),
-                    })
-                
-                self.client.insert(
-                    collection_name=self.collection_name,
-                    data=new_data
-                )
-                
-                print(f"已更新文件类型: {source} -> {file_type}")
-                return True
+            # 重新插入
+            self.client.insert(
+                collection_name=self.collection_name,
+                data=new_data
+            )
             
-            return False
+            print(f"已更新文件类型: {source} -> {file_type}")
+            return True
         except Exception as e:
             print(f"更新文件类型失败: {e}")
             return False
